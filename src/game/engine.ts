@@ -689,6 +689,71 @@ function popMove(ctx: FastEngineContext, idx: number, v: number, prevFloors: num
   }
 }
 
+export interface CellHintInfo {
+  minSafeCoin: number | null; // null means cell is dead (KO): no remaining coin is safe here
+  selectedSafe: boolean | null; // null if no available coin is selected
+  selectedWinnings: number;
+}
+
+export function getBoardCellHints(
+  board: BoardState,
+  selectedCoin: number | null,
+): Map<string, CellHintInfo> {
+  const map = new Map<string, CellHintInfo>();
+  const ctx = createFastContext(board);
+  if (!ctx) return map;
+
+  const n = ctx.n;
+  const hasSelected =
+    selectedCoin !== null &&
+    selectedCoin >= 1 &&
+    selectedCoin <= n &&
+    ctx.remaining[selectedCoin] > 0;
+
+  let baseGrid: number[][] | null = null;
+
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const idx = r * n + c;
+      if (ctx.grid[idx] !== 0) continue;
+
+      const floor = getCellMinCoin(ctx, idx);
+      let minSafeCoin: number | null = null;
+      for (let v = floor; v <= n; v++) {
+        if (ctx.remaining[v] > 0) {
+          minSafeCoin = v;
+          break;
+        }
+      }
+
+      let selectedSafe: boolean | null = null;
+      let selectedWinnings = 0;
+
+      if (hasSelected && selectedCoin !== null) {
+        if (selectedCoin >= floor) {
+          selectedSafe = true;
+        } else {
+          selectedSafe = false;
+          if (!baseGrid) {
+            baseGrid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
+          }
+          baseGrid[r][c] = selectedCoin;
+          selectedWinnings = inspectCellLinesNumeric(baseGrid, n, r, c).totalWinningsIfLost;
+          baseGrid[r][c] = 0;
+        }
+      }
+
+      map.set(`${r},${c}`, {
+        minSafeCoin,
+        selectedSafe,
+        selectedWinnings,
+      });
+    }
+  }
+
+  return map;
+}
+
 /**
  * Counts exact total distinct safe moves (cell, v) in O(n^2) using the lock-floor theorem.
  */

@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import {
   type BoardEvaluation,
   type BoardState,
-  checkMoveSafety,
+  type CellHintInfo,
+  getBoardCellHints,
 } from '../game/engine';
 
 interface GameBoardProps {
@@ -48,25 +49,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   }, [evaluation.violatingLines]);
 
   const cellSafetyMap = useMemo(() => {
-    const map = new Map<string, { safe: boolean; winnings: number }>();
-    if (
-      !showSafetyHints ||
-      !selectedCoin ||
-      remainingCountForSelected <= 0 ||
-      evaluation.isGameOver
-    ) {
-      return map;
+    if (!showSafetyHints || evaluation.isGameOver) {
+      return new Map<string, CellHintInfo>();
     }
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (board[r][c] === null) {
-          const res = checkMoveSafety(board, r, c, selectedCoin);
-          map.set(`${r},${c}`, { safe: res.safe, winnings: res.totalWinningsIfLost });
-        }
-      }
-    }
-    return map;
-  }, [board, n, selectedCoin, remainingCountForSelected, showSafetyHints, evaluation.isGameOver]);
+    const activeCoin =
+      selectedCoin !== null && remainingCountForSelected > 0 ? selectedCoin : null;
+    return getBoardCellHints(board, activeCoin);
+  }, [board, selectedCoin, remainingCountForSelected, showSafetyHints, evaluation.isGameOver]);
 
   const canInteract =
     !disabled && !evaluation.isGameOver && selectedCoin !== null && remainingCountForSelected > 0;
@@ -125,17 +114,33 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   }`}
                 >
                   {!cell && safety && (
-                    <span
-                      className={`pointer-events-none absolute bottom-0.5 right-0.5 px-0.5 font-semibold tabular-nums ${
-                        n >= 9 ? 'text-[8px]' : 'text-[10px]'
-                      } ${
-                        safety.safe
-                          ? 'text-black dark:text-white'
-                          : 'bg-black text-white dark:bg-white dark:text-black'
-                      }`}
-                    >
-                      {safety.safe ? 'OK' : `-${safety.winnings}`}
-                    </span>
+                    <>
+                      <span
+                        className={`pointer-events-none absolute top-0.5 left-0.5 px-0.5 font-semibold leading-none tabular-nums ${
+                          n >= 9 ? 'text-[8px]' : 'text-[10px]'
+                        } ${
+                          safety.minSafeCoin === null
+                            ? 'bg-neutral-600 text-white'
+                            : 'text-neutral-600 dark:text-neutral-400'
+                        }`}
+                      >
+                        {safety.minSafeCoin === null ? 'KO' : safety.minSafeCoin}
+                      </span>
+
+                      {safety.selectedSafe !== null && (
+                        <span
+                          className={`pointer-events-none absolute bottom-0.5 right-0.5 px-0.5 font-semibold leading-none tabular-nums ${
+                            n >= 9 ? 'text-[8px]' : 'text-[10px]'
+                          } ${
+                            safety.selectedSafe
+                              ? 'text-black dark:text-white'
+                              : 'bg-black text-white dark:bg-white dark:text-black'
+                          }`}
+                        >
+                          {safety.selectedSafe ? 'OK' : `-${safety.selectedWinnings}`}
+                        </span>
+                      )}
+                    </>
                   )}
 
                   {/* Hover preview coin */}

@@ -1,0 +1,8 @@
+{
+  "name": "LineLimit 45",
+  "description": "Two-player 45-degree combinatorial coin-placement strategy game with Nim analysis, Gemini strategy chat, and board photo recognition.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

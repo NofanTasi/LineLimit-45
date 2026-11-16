@@ -16,6 +16,7 @@ import { CoinTray } from './components/CoinTray';
 import { Logo } from './components/Logo';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { usePWAUpdate } from './pwa/swManager';
 
 interface HistorySnapshot {
   board: BoardState;
@@ -46,6 +47,7 @@ export default function App() {
   const [isBotThinking, setIsBotThinking] = useState<boolean>(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(true);
   const [botSpeedMs, setBotSpeedMs] = useState<number>(1000);
+  const { needRefresh, isUpdating, checkAndUpdate } = usePWAUpdate();
 
   // Zoom state: 'fit' automatically fits the board + coin tray + status inside viewport
   const [zoomMode, setZoomMode] = useState<'fit' | 'manual'>('fit');
@@ -290,8 +292,8 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-white text-black dark:bg-black dark:text-white font-mono flex flex-col">
-      {/* Minimal Single-Row Header */}
-      <header className="shrink-0 border-b border-black bg-white dark:border-white dark:bg-black px-4 py-2.5 flex items-center justify-between gap-4">
+      {/* Minimal Header */}
+      <header className="shrink-0 border-b border-black bg-white dark:border-white dark:bg-black px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 shrink-0">
           <Logo className="h-7 w-7 shrink-0" />
           <span className="text-sm font-bold tracking-tight whitespace-nowrap shrink-0">
@@ -299,7 +301,7 @@ export default function App() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Zoom Controls */}
           <div className="flex items-center border border-black dark:border-white">
             <button
@@ -333,6 +335,20 @@ export default function App() {
           </div>
 
           <PWAInstallButton />
+
+          <button
+            type="button"
+            disabled={isUpdating}
+            onClick={() => void checkAndUpdate()}
+            title="Check for the latest version and reload"
+            className={`border border-black dark:border-white px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 disabled:opacity-50 ${
+              needRefresh
+                ? 'bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200'
+                : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
+            }`}
+          >
+            {isUpdating ? 'UPDATING…' : needRefresh ? 'UPDATE •' : 'UPDATE'}
+          </button>
 
           <button
             type="button"
@@ -614,6 +630,10 @@ export default function App() {
                 Winner scores sum of violating coins.
               </p>
             )}
+
+            <p className="mt-2 text-center text-[10px] tracking-wide text-neutral-500 dark:text-neutral-400 tabular-nums">
+              Version v{__APP_VERSION__}
+            </p>
           </div>
         </div>
       </main>

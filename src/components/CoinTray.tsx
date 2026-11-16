@@ -46,7 +46,7 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
                   onClick={() => onSelectCoin(val)}
                   aria-pressed={isSelected}
                   style={{ width: buttonWidth }}
-                  className={`flex flex-col items-center justify-center border py-1.5 px-1 transition-colors min-h-[48px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
+                  className={`flex items-center justify-center border py-2 px-1 transition-colors min-h-[38px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
                     isEmpty
                       ? 'border-neutral-300 bg-neutral-100 text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-600 cursor-not-allowed'
                       : isSelected
@@ -54,15 +54,8 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
                         : 'border-black bg-white text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 cursor-pointer'
                   }`}
                 >
-                  <span className="text-sm font-bold tabular-nums leading-none">[{val}]</span>
-                  <span
-                    className={`mt-1 text-[10px] tabular-nums whitespace-nowrap ${
-                      isSelected
-                        ? 'text-neutral-200 dark:text-neutral-700'
-                        : 'text-neutral-600 dark:text-neutral-400'
-                    }`}
-                  >
-                    ×{count}
+                  <span className="text-sm font-bold tabular-nums leading-none whitespace-nowrap">
+                    [{val}] x{count}
                   </span>
                 </button>
               );

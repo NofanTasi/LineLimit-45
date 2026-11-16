@@ -160,12 +160,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {!cell && safety && (
                     <>
                       <span
-                        className={`pointer-events-none absolute top-0.5 left-0.5 px-0.5 font-semibold leading-none tabular-nums ${
+                        className={`pointer-events-none absolute top-0.5 left-0.5 leading-none tabular-nums ${
                           n >= 9 ? 'text-[8px]' : 'text-[10px]'
                         } ${
                           safety.minSafeCoin === null
-                            ? 'bg-neutral-600 text-white'
-                            : 'text-neutral-600 dark:text-neutral-400'
+                            ? 'font-bold text-black dark:text-white'
+                            : 'font-semibold text-neutral-600 dark:text-neutral-400'
                         }`}
                       >
                         {safety.minSafeCoin === null ? 'KO' : safety.minSafeCoin}
@@ -173,12 +173,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
                       {safety.selectedSafe !== null && (
                         <span
-                          className={`pointer-events-none absolute bottom-0.5 right-0.5 px-0.5 font-semibold leading-none tabular-nums ${
+                          className={`pointer-events-none absolute bottom-0.5 right-0.5 leading-none tabular-nums ${
                             n >= 9 ? 'text-[8px]' : 'text-[10px]'
                           } ${
                             safety.selectedSafe
-                              ? 'text-black dark:text-white'
-                              : 'bg-black text-white dark:bg-white dark:text-black'
+                              ? 'font-semibold text-black dark:text-white'
+                              : 'font-bold text-black dark:text-white'
                           }`}
                         >
                           {safety.selectedSafe ? 'OK' : `-${safety.selectedWinnings}`}
@@ -197,45 +197,51 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     </div>
                   )}
 
-                  {/* Placed Monochrome Coin: P1 = White, P2 = Black */}
+                  {/* Placed Monochrome Coin: P1 = White with black circle, P2 = Black with white circle */}
                   {cell && (
-                    <div
-                      className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-2 ${
-                        isInvertedLineCell
-                          ? 'border-white dark:border-black'
-                          : 'border-black dark:border-white'
-                      } ${
-                        cell.placedBy === 1 ? 'bg-white text-black' : 'bg-black text-white'
-                      } ${
-                        isViolatingCoin
-                          ? isInvertedLineCell
-                            ? 'outline-2 outline-offset-1 outline-white dark:outline-black'
-                            : 'outline-2 outline-offset-1 outline-black dark:outline-white'
-                          : isLastMove
-                            ? 'outline-1 outline-offset-1 outline-neutral-500'
-                            : ''
-                      }`}
-                    >
-                      <span className={`font-bold tabular-nums leading-none ${coinFontSize}`}>
-                        {cell.value}
-                      </span>
+                    <>
+                      <div
+                        className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-[3px] ${
+                          cell.placedBy === 1
+                            ? `bg-white text-black border-black ${
+                                isInvertedLineCell
+                                  ? 'ring-1 ring-white dark:ring-0'
+                                  : 'dark:ring-1 dark:ring-white'
+                              }`
+                            : `bg-black text-white border-white ${
+                                isInvertedLineCell
+                                  ? 'dark:ring-1 dark:ring-black'
+                                  : 'ring-1 ring-black dark:ring-0'
+                              }`
+                        } ${
+                          isViolatingCoin
+                            ? isInvertedLineCell
+                              ? 'outline-2 outline-offset-1 outline-white dark:outline-black'
+                              : 'outline-2 outline-offset-1 outline-black dark:outline-white'
+                            : isLastMove
+                              ? 'outline-1 outline-offset-1 outline-neutral-500'
+                              : ''
+                        }`}
+                      >
+                        <span className={`font-bold tabular-nums leading-none ${coinFontSize}`}>
+                          {cell.value}
+                        </span>
+                      </div>
 
                       {n <= 8 || isViolatingCoin ? (
                         <span
-                          className={`absolute -bottom-1 -right-1 border px-0.5 font-bold leading-tight ${
+                          className={`pointer-events-none absolute bottom-0.5 right-0.5 font-bold leading-none ${
                             n >= 9 ? 'text-[7px]' : 'text-[8px]'
                           } ${
                             isInvertedLineCell
-                              ? 'border-white dark:border-black'
-                              : 'border-black dark:border-white'
-                          } ${
-                            cell.placedBy === 1 ? 'bg-white text-black' : 'bg-black text-white'
+                              ? 'text-white dark:text-black'
+                              : 'text-black dark:text-white'
                           }`}
                         >
                           {isViolatingCoin ? '!' : `P${cell.placedBy}`}
                         </span>
                       ) : null}
-                    </div>
+                    </>
                   )}
                 </button>
               );

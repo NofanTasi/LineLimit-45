@@ -169,7 +169,7 @@ export function getLinesThroughCell(n: number, r: number, c: number): BoardLine[
   for (let rr = 0; rr < n; rr++) colCells.push({ r: rr, c });
   lines.push({
     id: `col-${c}`,
-    label: `Col ${String.fromCharCode(65 + c)}`,
+    label: `Col ${c + 1}`,
     kind: 'col',
     cells: colCells,
   });
@@ -220,6 +220,126 @@ export function getRemainingCoins(board: BoardState): Record<number, number> {
     }
   }
   return counts;
+}
+
+/**
+ * Constructs an incremental n x n Latin square (1-based coin values 1..n)
+ * from Duponcheel & Duponcheel ("Cyclic n x n Latin squares representing
+ * solutions of (n,c)-coins problems for 0 <= c <= n") for any n >= 4.
+ * Every incremental Latin square fills the entire n x n board with zero violations.
+ */
+export function getIncrementalLatinSquare(n: number): number[][] | null {
+  if (n < 4) return null;
+
+  if (n === 4) {
+    // Non-cyclic witness L^4 (Appendix B, shifted +1 to coin values 1..4)
+    return [
+      [3, 1, 2, 4],
+      [2, 4, 3, 1],
+      [1, 3, 4, 2],
+      [4, 2, 1, 3],
+    ];
+  }
+
+  if (n === 6) {
+    // Non-cyclic witness L^6 (Appendix B, shifted +1 to coin values 1..6)
+    return [
+      [2, 1, 3, 4, 6, 5],
+      [4, 2, 5, 1, 3, 6],
+      [5, 4, 6, 3, 2, 1],
+      [1, 3, 2, 6, 5, 4],
+      [3, 6, 1, 5, 4, 2],
+      [6, 5, 4, 2, 1, 3],
+    ];
+  }
+
+  let p: number[];
+  const mod6 = n % 6;
+
+  if (n === 8) {
+    p = [0, 4, 1, 3, 6, 2, 7, 5];
+  } else if (n === 9) {
+    p = [0, 6, 3, 1, 8, 5, 2, 4, 7];
+  } else if (n === 15) {
+    p = [0, 3, 6, 9, 12, 8, 5, 2, 13, 1, 4, 7, 10, 14, 11];
+  } else if (n === 21) {
+    p = [0, 18, 15, 12, 9, 6, 3, 7, 4, 1, 14, 17, 10, 16, 2, 5, 11, 8, 20, 13, 19];
+  } else if (mod6 === 1 || mod6 === 5) {
+    // Family F_1: p_1(j) = (-2j) mod n
+    p = Array.from({ length: n }, (_, j) => ((-2 * j) % n + n) % n);
+  } else if (mod6 === 2 || mod6 === 4) {
+    // Family F_2: n = 2m >= 10
+    const m = n / 2;
+    p = Array.from({ length: n }, (_, j) =>
+      j < m ? (2 * j + m + 1) % n : (2 * (j - m) + m + 4) % n,
+    );
+  } else if (mod6 === 3) {
+    // Family F_3: n = 3k >= 27
+    const k = n / 3;
+    p = Array.from({ length: n }, (_, j) => {
+      const u = Math.floor(j / k);
+      return (3 * j + 2 * k + 4 * u) % n;
+    });
+  } else {
+    // Family F_4: n = 0 mod 6, n = 2m >= 12
+    const m = n / 2;
+    p = Array.from({ length: n }, (_, j) => {
+      if (j === 0) return n - 2;
+      if (j <= m - 3) return 2 * j + 2;
+      if (j === m - 2) return 0;
+      if (j <= n - 2) return 2 * (j - m + 1) + 1;
+      return 2;
+    });
+  }
+
+  return Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => ((i + p[j]) % n) + 1),
+  );
+}
+
+const symmetryCache = new Map<number, number[][][]>();
+
+/**
+ * Returns the distinct dihedral (D4) spatial symmetries of the canonical
+ * incremental Latin square L^n. All 8 symmetries preserve rows, columns,
+ * sum-diagonals, and diff-diagonals, so every symmetry is also a valid
+ * incremental Latin square.
+ */
+export function getIncrementalLatinSymmetries(n: number): number[][][] {
+  const cached = symmetryCache.get(n);
+  if (cached) return cached;
+
+  const base = getIncrementalLatinSquare(n);
+  if (!base) return [];
+
+  const transforms: ((r: number, c: number) => [number, number])[] = [
+    (r, c) => [r, c],
+    (r, c) => [c, n - 1 - r],
+    (r, c) => [n - 1 - r, n - 1 - c],
+    (r, c) => [n - 1 - c, r],
+    (r, c) => [r, n - 1 - c],
+    (r, c) => [n - 1 - r, c],
+    (r, c) => [c, r],
+    (r, c) => [n - 1 - c, n - 1 - r],
+  ];
+
+  const seen = new Set<string>();
+  const results: number[][][] = [];
+  for (const tf of transforms) {
+    const sq = Array.from({ length: n }, (_, r) =>
+      Array.from({ length: n }, (_, c) => {
+        const [rr, cc] = tf(r, c);
+        return base[rr][cc];
+      }),
+    );
+    const sig = sq.map((row) => row.join(',')).join(';');
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      results.push(sq);
+    }
+  }
+  symmetryCache.set(n, results);
+  return results;
 }
 
 export function evaluateBoard(board: BoardState): BoardEvaluation {
@@ -391,13 +511,221 @@ export function checkMoveSafety(
   return inspectCellLinesNumeric(grid, n, r, c);
 }
 
+/**
+ * Fast lock-floor engine derived from Lemma B.1 of the paper:
+ * A safe line sorted v_0 <= v_1 <= ... <= v_{r-1} (1-based) satisfies v_m >= m + 1.
+ * Its zero-slack lock threshold z(L) = max({0} U {v_m : v_m = m + 1}).
+ * Placing coin v on empty cell (r, c) is safe iff v > max(z(L) for L through (r, c)).
+ */
+interface FastEngineContext {
+  n: number;
+  stride: number;
+  lineCount: number;
+  cellLines: number[][];
+  cellLineCount: number[];
+  grid: Uint8Array;
+  remaining: Int8Array;
+  lineFreq: Int8Array;
+  lineFloor: Uint8Array;
+  emptyCount: number;
+}
+
+interface TopologyCache {
+  lineCount: number;
+  cellLines: number[][];
+  cellLineCount: number[];
+}
+
+const topologyCache = new Map<number, TopologyCache>();
+
+function getTopology(n: number): TopologyCache {
+  const cached = topologyCache.get(n);
+  if (cached) return cached;
+
+  const cellLines: number[][] = Array.from({ length: n * n }, () => []);
+  let lineIdx = 0;
+
+  // Rows: 0 .. n-1
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) cellLines[r * n + c].push(lineIdx);
+    lineIdx++;
+  }
+  // Cols: n .. 2n-1
+  for (let c = 0; c < n; c++) {
+    for (let r = 0; r < n; r++) cellLines[r * n + c].push(lineIdx);
+    lineIdx++;
+  }
+  // DiagDown (r - c = k), length >= 2
+  for (let k = -(n - 2); k <= n - 2; k++) {
+    for (let r = 0; r < n; r++) {
+      const c = r - k;
+      if (c >= 0 && c < n) cellLines[r * n + c].push(lineIdx);
+    }
+    lineIdx++;
+  }
+  // DiagUp (r + c = s), length >= 2
+  for (let s = 1; s <= 2 * n - 3; s++) {
+    for (let r = 0; r < n; r++) {
+      const c = s - r;
+      if (c >= 0 && c < n) cellLines[r * n + c].push(lineIdx);
+    }
+    lineIdx++;
+  }
+
+  const topo: TopologyCache = {
+    lineCount: lineIdx,
+    cellLines,
+    cellLineCount: cellLines.map((ls) => ls.length),
+  };
+  topologyCache.set(n, topo);
+  return topo;
+}
+
+function computeLineFloorFromFreq(
+  lineFreq: Int8Array,
+  lineIdx: number,
+  stride: number,
+  n: number,
+): number {
+  const base = lineIdx * stride;
+  let cum = 0;
+  let z = 0;
+  for (let v = 1; v <= n; v++) {
+    const f = lineFreq[base + v];
+    cum += f;
+    if (f > 0 && cum === v) z = v;
+  }
+  return z;
+}
+
+function createFastContext(board: BoardState): FastEngineContext | null {
+  const n = board.length;
+  const topo = getTopology(n);
+  const stride = n + 1;
+  const grid = new Uint8Array(n * n);
+  const remaining = new Int8Array(stride);
+  for (let v = 1; v <= n; v++) remaining[v] = n;
+
+  const lineFreq = new Int8Array(topo.lineCount * stride);
+  const lineFloor = new Uint8Array(topo.lineCount);
+  let emptyCount = 0;
+
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const cell = board[r][c];
+      const idx = r * n + c;
+      if (cell) {
+        const v = cell.value;
+        grid[idx] = v;
+        remaining[v]--;
+        for (const l of topo.cellLines[idx]) {
+          lineFreq[l * stride + v]++;
+        }
+      } else {
+        emptyCount++;
+      }
+    }
+  }
+
+  for (let l = 0; l < topo.lineCount; l++) {
+    const base = l * stride;
+    let cum = 0;
+    let z = 0;
+    for (let v = 1; v <= n; v++) {
+      const f = lineFreq[base + v];
+      cum += f;
+      if (f > 0 && cum > v) return null; // Board already has a violation
+      if (f > 0 && cum === v) z = v;
+    }
+    lineFloor[l] = z;
+  }
+
+  return {
+    n,
+    stride,
+    lineCount: topo.lineCount,
+    cellLines: topo.cellLines,
+    cellLineCount: topo.cellLineCount,
+    grid,
+    remaining,
+    lineFreq,
+    lineFloor,
+    emptyCount,
+  };
+}
+
+function getCellMinCoin(ctx: FastEngineContext, idx: number): number {
+  const ls = ctx.cellLines[idx];
+  let maxZ = 0;
+  for (let i = 0; i < ls.length; i++) {
+    const z = ctx.lineFloor[ls[i]];
+    if (z > maxZ) maxZ = z;
+  }
+  return maxZ + 1;
+}
+
+function pushMove(ctx: FastEngineContext, idx: number, v: number, prevFloors: number[]): void {
+  ctx.grid[idx] = v;
+  ctx.remaining[v]--;
+  ctx.emptyCount--;
+  const ls = ctx.cellLines[idx];
+  for (let i = 0; i < ls.length; i++) {
+    const l = ls[i];
+    prevFloors[i] = ctx.lineFloor[l];
+    ctx.lineFreq[l * ctx.stride + v]++;
+    ctx.lineFloor[l] = computeLineFloorFromFreq(ctx.lineFreq, l, ctx.stride, ctx.n);
+  }
+}
+
+function popMove(ctx: FastEngineContext, idx: number, v: number, prevFloors: number[]): void {
+  ctx.grid[idx] = 0;
+  ctx.remaining[v]++;
+  ctx.emptyCount++;
+  const ls = ctx.cellLines[idx];
+  for (let i = 0; i < ls.length; i++) {
+    const l = ls[i];
+    ctx.lineFreq[l * ctx.stride + v]--;
+    ctx.lineFloor[l] = prevFloors[i];
+  }
+}
+
+/**
+ * Counts exact total distinct safe moves (cell, v) in O(n^2) using the lock-floor theorem.
+ */
+function countTotalSafeMovesFast(ctx: FastEngineContext): number {
+  const { n, remaining, grid } = ctx;
+  // availGeq[f] = number of distinct coin values v >= f with remaining[v] > 0
+  const availGeq = new Uint8Array(n + 2);
+  let running = 0;
+  for (let v = n; v >= 1; v--) {
+    if (remaining[v] > 0) running++;
+    availGeq[v] = running;
+  }
+  availGeq[n + 1] = 0;
+
+  let total = 0;
+  for (let idx = 0; idx < n * n; idx++) {
+    if (grid[idx] !== 0) continue;
+    total += availGeq[getCellMinCoin(ctx, idx)];
+  }
+  return total;
+}
+
+function encodeFastGrid(grid: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < grid.length; i++) {
+    s += String.fromCharCode(48 + grid[i]);
+  }
+  return s;
+}
+
 export function getAllSafeAndLosingMoves(board: BoardState): {
   safeMoves: SafeMoveOption[];
   losingMoves: { r: number; c: number; value: number; coordLabel: string; lossWinnings: number }[];
 } {
   const n = board.length;
   const remaining = getRemainingCoins(board);
-  const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
+  const ctx = createFastContext(board);
   const safeMoves: SafeMoveOption[] = [];
   const losingMoves: {
     r: number;
@@ -407,6 +735,55 @@ export function getAllSafeAndLosingMoves(board: BoardState): {
     lossWinnings: number;
   }[] = [];
 
+  if (ctx) {
+    // Fast exact O(1) floor check per (cell, v) when board is currently safe
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const idx = r * n + c;
+        if (ctx.grid[idx] !== 0) continue;
+        const coordLabel = formatCoord(r, c);
+        const minCoin = getCellMinCoin(ctx, idx);
+        const ls = ctx.cellLines[idx];
+
+        for (let v = 1; v <= n; v++) {
+          if (ctx.remaining[v] <= 0) continue;
+          if (v >= minCoin) {
+            // Compute minMarginAfter in O(n) across the 2..4 lines
+            let minMargin = v - 1;
+            for (let li = 0; li < ls.length; li++) {
+              const base = ls[li] * ctx.stride;
+              let cum = 0;
+              for (let w = 1; w <= n; w++) {
+                const freq = ctx.lineFreq[base + w] + (w === v ? 1 : 0);
+                cum += freq;
+                if (freq > 0) {
+                  const margin = w - cum;
+                  if (margin < minMargin) minMargin = margin;
+                }
+              }
+            }
+            safeMoves.push({ r, c, value: v, coordLabel, minMarginAfter: minMargin });
+          } else {
+            // Violating move: inspect exact winnings penalty
+            const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
+            grid[r][c] = v;
+            const check = inspectCellLinesNumeric(grid, n, r, c);
+            losingMoves.push({
+              r,
+              c,
+              value: v,
+              coordLabel,
+              lossWinnings: check.totalWinningsIfLost,
+            });
+          }
+        }
+      }
+    }
+    return { safeMoves, losingMoves };
+  }
+
+  // Fallback when board already has a violation
+  const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
       if (grid[r][c] !== 0) continue;
@@ -434,94 +811,406 @@ export function getAllSafeAndLosingMoves(board: BoardState): {
   return { safeMoves, losingMoves };
 }
 
-// Fast numeric board encoding for solver memoization (ignores placedBy since game is impartial)
-function encodeNumericBoard(grid: number[][], remaining: number[]): string {
-  return grid.map((row) => row.join(',')).join(';') + '|' + remaining.slice(1).join(',');
+/**
+ * Paper-grounded leaf evaluation from the perspective of `sideToMove`:
+ * - Exact dead squares: cells whose lock floor F(r,c) > maxRemainingCoin.
+ * - Sublevel deficit (Lemma B.1 + Theorem 1.2): R_{<=k} > S_{<=k} proves no full-board draw exists.
+ * - Playable-square parity & trap pressure: odd playable slots favor the player to move when
+ *   squares decouple; low opponent safe mobility creates forcing bottlenecks.
+ */
+function evaluateLeafForSideToMove(ctx: FastEngineContext): number {
+  const { n, remaining, grid } = ctx;
+  const totalSafe = countTotalSafeMovesFast(ctx);
+  if (totalSafe === 0) return -90000;
+
+  let maxRem = 0;
+  let totalCoinsLeft = 0;
+  const remLeq = new Int16Array(n + 1);
+  for (let v = 1; v <= n; v++) {
+    totalCoinsLeft += remaining[v];
+    remLeq[v] = totalCoinsLeft;
+    if (remaining[v] > 0) maxRem = v;
+  }
+
+  // Count empty cells at each lock floor F(r, c)
+  const floorBuckets = new Int16Array(n + 2);
+  let deadCells = 0;
+  let playableCells = 0;
+  let tightnessSum = 0;
+
+  for (let idx = 0; idx < n * n; idx++) {
+    if (grid[idx] !== 0) continue;
+    const f = getCellMinCoin(ctx, idx);
+    floorBuckets[f]++;
+    if (f > maxRem) {
+      deadCells++;
+    } else {
+      playableCells++;
+      tightnessSum += f - 1;
+    }
+  }
+
+  // Compute max sublevel deficit max_k (R_{<=k} - S_{<=k})
+  let slotsLeq = 0;
+  let maxDeficit = 0;
+  let criticalTightness = 0;
+  for (let k = 1; k <= n; k++) {
+    slotsLeq += floorBuckets[k];
+    const diff = remLeq[k] - slotsLeq;
+    if (diff > maxDeficit) maxDeficit = diff;
+    if (remLeq[k] > 0 && slotsLeq >= remLeq[k]) {
+      const slack = slotsLeq - remLeq[k];
+      if (slack <= 2) criticalTightness += 3 - slack;
+    }
+  }
+
+  // Effective upper bound on remaining safe plies
+  const effectivePlayable = Math.min(playableCells, totalCoinsLeft - maxDeficit);
+  const parityBonus = effectivePlayable > 0 ? (effectivePlayable % 2 === 1 ? 18 : -14) : -40;
+
+  // Favor high mobility + small parity/structural control for sideToMove
+  return (
+    Math.min(totalSafe, 250) * 1.4 +
+    parityBonus +
+    criticalTightness * 2.5 -
+    deadCells * 0.5 +
+    tightnessSum * 0.15
+  );
 }
 
-function hasViolationNumeric(grid: number[][], n: number): boolean {
-  // Check rows
+const WIN_SCORE = 100000;
+const WIN_THRESHOLD = 90000;
+
+const enum TTFlag {
+  EXACT = 0,
+  LOWER = 1,
+  UPPER = 2,
+}
+
+interface TTEntry {
+  depth: number;
+  flag: TTFlag;
+  score: number;
+  bestIdx: number;
+  bestVal: number;
+}
+
+interface SearchCandidate {
+  idx: number;
+  r: number;
+  c: number;
+  value: number;
+  oppSafe: number;
+  score: number;
+  minMargin: number;
+}
+
+function generateOrderedCandidates(
+  ctx: FastEngineContext,
+  latinTemplates: number[][][],
+  preferLatinBonus: boolean,
+): SearchCandidate[] {
+  const { n, grid, remaining } = ctx;
+  const candidates: SearchCandidate[] = [];
+  const prevFloors = [0, 0, 0, 0];
+  const center = (n - 1) / 2;
+
+  // Check which D4 symmetries of L^n are still completely consistent with current board
+  const compatibleTemplates = preferLatinBonus
+    ? latinTemplates.filter((tpl) => {
+        for (let r = 0; r < n; r++) {
+          for (let c = 0; c < n; c++) {
+            const g = grid[r * n + c];
+            if (g !== 0 && tpl[r][c] !== g) return false;
+          }
+        }
+        return true;
+      })
+    : [];
+
   for (let r = 0; r < n; r++) {
-    const vals: number[] = [];
     for (let c = 0; c < n; c++) {
-      if (grid[r][c] > 0) vals.push(grid[r][c]);
+      const idx = r * n + c;
+      if (grid[idx] !== 0) continue;
+      const minCoin = getCellMinCoin(ctx, idx);
+      const ls = ctx.cellLines[idx];
+      const lineWeight = ls.length; // 4 lines in interior, 3 on edges/main diags
+      const centerDist = Math.abs(r - center) + Math.abs(c - center);
+
+      for (let v = 1; v <= n; v++) {
+        if (remaining[v] <= 0 || v < minCoin) continue;
+
+        pushMove(ctx, idx, v, prevFloors);
+        const oppSafe = countTotalSafeMovesFast(ctx);
+        popMove(ctx, idx, v, prevFloors);
+
+        // Quick heuristic ordering score
+        let orderScore = oppSafe === 0 ? WIN_SCORE : -oppSafe * 4;
+        orderScore += lineWeight * 3 - centerDist * 0.5;
+        // Slightly prefer spending smaller coins when they tightly lock lines
+        if (v === minCoin) orderScore += 4;
+        if (v <= 2) orderScore += 3;
+
+        if (compatibleTemplates.length > 0) {
+          for (let t = 0; t < compatibleTemplates.length; t++) {
+            if (compatibleTemplates[t][r][c] === v) {
+              orderScore += 6;
+              break;
+            }
+          }
+        }
+
+        candidates.push({
+          idx,
+          r,
+          c,
+          value: v,
+          oppSafe,
+          score: orderScore,
+          minMargin: v - minCoin,
+        });
+      }
     }
-    if (vals.length > 1 && lineViolates(vals)) return true;
   }
-  // Check cols
-  for (let c = 0; c < n; c++) {
-    const vals: number[] = [];
-    for (let r = 0; r < n; r++) {
-      if (grid[r][c] > 0) vals.push(grid[r][c]);
-    }
-    if (vals.length > 1 && lineViolates(vals)) return true;
-  }
-  // Down-right diagonals
-  for (let k = -(n - 2); k <= n - 2; k++) {
-    const vals: number[] = [];
-    for (let r = 0; r < n; r++) {
-      const c = r - k;
-      if (c >= 0 && c < n && grid[r][c] > 0) vals.push(grid[r][c]);
-    }
-    if (vals.length > 1 && lineViolates(vals)) return true;
-  }
-  // Up-right diagonals
-  for (let s = 1; s <= 2 * n - 3; s++) {
-    const vals: number[] = [];
-    for (let r = 0; r < n; r++) {
-      const c = s - r;
-      if (c >= 0 && c < n && grid[r][c] > 0) vals.push(grid[r][c]);
-    }
-    if (vals.length > 1 && lineViolates(vals)) return true;
-  }
-  return false;
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates;
 }
 
-function lineViolates(vals: number[]): boolean {
-  for (let i = 0; i < vals.length; i++) {
-    const v = vals[i];
-    let count = 0;
-    for (let j = 0; j < vals.length; j++) {
-      if (vals[j] <= v) count++;
+function runIterativeAlphaBeta(
+  ctx: FastEngineContext,
+  timeBudgetMs: number,
+  nodeBudget: number,
+  maxBeamWidth: number,
+): {
+  bestCandidate: SearchCandidate | null;
+  topWinningCandidates: SearchCandidate[];
+  outcome: 'N' | 'P' | 'DRAW' | 'UNKNOWN';
+  exact: boolean;
+  nodes: number;
+} {
+  const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const latinTemplates = getIncrementalLatinSymmetries(ctx.n);
+  const rootCandidates = generateOrderedCandidates(ctx, latinTemplates, true);
+
+  if (rootCandidates.length === 0) {
+    return {
+      bestCandidate: null,
+      topWinningCandidates: [],
+      outcome: ctx.emptyCount === 0 ? 'DRAW' : 'P',
+      exact: true,
+      nodes: 1,
+    };
+  }
+
+  // Immediate 1-move win check across ALL safe moves (zero blind spots!)
+  const instantWins = rootCandidates.filter((m) => m.oppSafe === 0);
+  if (instantWins.length > 0) {
+    return {
+      bestCandidate: instantWins[0],
+      topWinningCandidates: instantWins,
+      outcome: 'N',
+      exact: true,
+      nodes: rootCandidates.length,
+    };
+  }
+
+  const tt = new Map<string, TTEntry>();
+  let nodes = rootCandidates.length;
+  let aborted = false;
+  let anyPruned = false;
+
+  const isBudgetExceeded = () => {
+    if (nodes >= nodeBudget) return true;
+    if ((nodes & 127) === 0) {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now - start >= timeBudgetMs) return true;
     }
-    if (count > v) return true;
+    return false;
+  };
+
+  function negamax(depth: number, ply: number, alpha: number, beta: number): number {
+    if (ctx.emptyCount === 0) return 0; // Full board = Draw
+    if (isBudgetExceeded()) {
+      aborted = true;
+      return 0;
+    }
+
+    const key = encodeFastGrid(ctx.grid);
+    const cached = tt.get(key);
+    if (cached && cached.depth >= depth) {
+      let ttScore = cached.score;
+      if (ttScore > WIN_THRESHOLD) ttScore -= ply;
+      else if (ttScore < -WIN_THRESHOLD) ttScore += ply;
+
+      if (cached.flag === TTFlag.EXACT) return ttScore;
+      if (cached.flag === TTFlag.LOWER) alpha = Math.max(alpha, ttScore);
+      else if (cached.flag === TTFlag.UPPER) beta = Math.min(beta, ttScore);
+      if (alpha >= beta) return ttScore;
+    }
+
+    nodes++;
+
+    // Generate all safe moves using fast O(1) cell floor
+    const { n, grid, remaining } = ctx;
+    const moves: { idx: number; v: number; order: number }[] = [];
+    for (let idx = 0; idx < n * n; idx++) {
+      if (grid[idx] !== 0) continue;
+      const minCoin = getCellMinCoin(ctx, idx);
+      const isTT = cached && cached.bestIdx === idx;
+      for (let v = minCoin; v <= n; v++) {
+        if (remaining[v] <= 0) continue;
+        let order = (isTT && cached!.bestVal === v ? 1000 : 0) + (v === minCoin ? 6 : 0) + ctx.cellLineCount[idx];
+        if (v <= 2) order += 2;
+        moves.push({ idx, v, order });
+      }
+    }
+
+    if (moves.length === 0) {
+      return -WIN_SCORE + ply;
+    }
+
+    if (depth <= 0) {
+      return evaluateLeafForSideToMove(ctx);
+    }
+
+    moves.sort((a, b) => b.order - a.order);
+    const limit = moves.length > maxBeamWidth ? maxBeamWidth : moves.length;
+    if (limit < moves.length) anyPruned = true;
+
+    const origAlpha = alpha;
+    let bestScore = -Infinity;
+    let bestIdx = moves[0].idx;
+    let bestVal = moves[0].v;
+    const prevFloors = [0, 0, 0, 0];
+
+    for (let i = 0; i < limit; i++) {
+      const m = moves[i];
+      pushMove(ctx, m.idx, m.v, prevFloors);
+      const score = -negamax(depth - 1, ply + 1, -beta, -alpha);
+      popMove(ctx, m.idx, m.v, prevFloors);
+
+      if (aborted) return 0;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = m.idx;
+        bestVal = m.v;
+      }
+      if (score > alpha) alpha = score;
+      if (alpha >= beta) break;
+    }
+
+    let storeScore = bestScore;
+    if (storeScore > WIN_THRESHOLD) storeScore += ply;
+    else if (storeScore < -WIN_THRESHOLD) storeScore -= ply;
+
+    const flag =
+      bestScore <= origAlpha
+        ? TTFlag.UPPER
+        : bestScore >= beta
+          ? TTFlag.LOWER
+          : TTFlag.EXACT;
+
+    if (tt.size < 120000) {
+      tt.set(key, { depth, flag, score: storeScore, bestIdx, bestVal });
+    }
+
+    return bestScore;
   }
-  return false;
+
+  let bestMove = rootCandidates[0];
+  let bestRootScore = -Infinity;
+  let lastCompletedWinning: SearchCandidate[] = [];
+  let completedExact = false;
+
+  const maxDepth = Math.min(ctx.emptyCount, 24);
+  const rootLimit =
+    rootCandidates.length > maxBeamWidth * 2 ? maxBeamWidth * 2 : rootCandidates.length;
+  if (rootLimit < rootCandidates.length) anyPruned = true;
+
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    aborted = false;
+    anyPruned = rootLimit < rootCandidates.length;
+
+    let iterBest = rootCandidates[0];
+    let iterBestScore = -Infinity;
+    const iterWinners: SearchCandidate[] = [];
+    const prevFloors = [0, 0, 0, 0];
+    let alpha = -WIN_SCORE - 100;
+    const beta = WIN_SCORE + 100;
+
+    // Order root candidates: keep previous best move first
+    const orderedRoot = rootCandidates.slice(0, rootLimit);
+    if (bestMove) {
+      const idxIn = orderedRoot.indexOf(bestMove);
+      if (idxIn > 0) {
+        orderedRoot.splice(idxIn, 1);
+        orderedRoot.unshift(bestMove);
+      }
+    }
+
+    for (let i = 0; i < orderedRoot.length; i++) {
+      const cand = orderedRoot[i];
+      pushMove(ctx, cand.idx, cand.value, prevFloors);
+      const score = -negamax(depth - 1, 1, -beta, -alpha);
+      popMove(ctx, cand.idx, cand.value, prevFloors);
+
+      if (aborted) break;
+
+      if (score > WIN_THRESHOLD) {
+        iterWinners.push(cand);
+      }
+      if (score > iterBestScore) {
+        iterBestScore = score;
+        iterBest = cand;
+      }
+      if (score > alpha) {
+        alpha = score;
+      }
+      // If we found an exact forced win at full depth and only care about choosing one, still let shallow depths finish quickly, or break if forced win found in 1-2 plies
+      if (depth >= ctx.emptyCount && score > WIN_THRESHOLD) {
+        break;
+      }
+    }
+
+    if (aborted) break;
+
+    bestMove = iterBest;
+    bestRootScore = iterBestScore;
+    lastCompletedWinning = iterWinners;
+
+    if (!anyPruned && depth >= ctx.emptyCount) {
+      completedExact = true;
+      break;
+    }
+    if (!anyPruned && iterBestScore > WIN_THRESHOLD) {
+      completedExact = true;
+      break;
+    }
+
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - start >= timeBudgetMs * 0.7) break;
+  }
+
+  let outcome: 'N' | 'P' | 'DRAW' | 'UNKNOWN' = 'UNKNOWN';
+  if (bestRootScore > WIN_THRESHOLD) {
+    outcome = 'N';
+  } else if (completedExact) {
+    outcome = bestRootScore < -WIN_THRESHOLD ? 'P' : 'DRAW';
+  }
+
+  return {
+    bestCandidate: bestMove,
+    topWinningCandidates:
+      lastCompletedWinning.length > 0 ? lastCompletedWinning : bestMove ? [bestMove] : [],
+    outcome,
+    exact: completedExact || outcome === 'N',
+    nodes,
+  };
 }
 
-function cellLinesViolate(grid: number[][], n: number, r: number, c: number): boolean {
-  // Row r
-  const rowVals: number[] = [];
-  for (let cc = 0; cc < n; cc++) if (grid[r][cc] > 0) rowVals.push(grid[r][cc]);
-  if (rowVals.length > 1 && lineViolates(rowVals)) return true;
-
-  // Col c
-  const colVals: number[] = [];
-  for (let rr = 0; rr < n; rr++) if (grid[rr][c] > 0) colVals.push(grid[rr][c]);
-  if (colVals.length > 1 && lineViolates(colVals)) return true;
-
-  // Diag down (r - c)
-  const k = r - c;
-  const d1Vals: number[] = [];
-  for (let rr = 0; rr < n; rr++) {
-    const cc = rr - k;
-    if (cc >= 0 && cc < n && grid[rr][cc] > 0) d1Vals.push(grid[rr][cc]);
-  }
-  if (d1Vals.length > 1 && lineViolates(d1Vals)) return true;
-
-  // Diag up (r + c)
-  const s = r + c;
-  const d2Vals: number[] = [];
-  for (let rr = 0; rr < n; rr++) {
-    const cc = s - rr;
-    if (cc >= 0 && cc < n && grid[rr][cc] > 0) d2Vals.push(grid[rr][cc]);
-  }
-  if (d2Vals.length > 1 && lineViolates(d2Vals)) return true;
-
-  return false;
-}
-
-export function analyzePosition(board: BoardState, nodeBudget = 22000): PositionAnalysis {
+export function analyzePosition(board: BoardState, nodeBudget = 24000): PositionAnalysis {
   const n = board.length;
   const evalNow = evaluateBoard(board);
   const { safeMoves, losingMoves } = getAllSafeAndLosingMoves(board);
@@ -569,76 +1258,70 @@ export function analyzePosition(board: BoardState, nodeBudget = 22000): Position
     };
   }
 
-  const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
-  const remObj = getRemainingCoins(board);
-  const remaining = Array.from({ length: n + 1 }, (_, i) => (i === 0 ? 0 : remObj[i] ?? 0));
-
-  let emptyCount = 0;
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      if (grid[r][c] === 0) emptyCount++;
-    }
+  const ctx = createFastContext(board);
+  if (!ctx) {
+    return {
+      safeMoveCount: 0,
+      losingMoveCount: losingMoves.length,
+      totalLegalMoves: losingMoves.length,
+      outcome: 'P',
+      nimber: 0,
+      confidence: 'EXACT',
+      winningMoves: [],
+      explanation: 'A 45° line violation has already occurred.',
+      nodesSearched: 1,
+    };
   }
 
-  // Exact Nimber / P-N search if small enough
-  let nodes = 0;
-  let budgetExhausted = false;
-  const nimberMemo = new Map<string, number>();
+  // Exact Sprague-Grundy nimber computation for small endgames (<= 7 empty cells)
+  if (ctx.emptyCount <= 7) {
+    let nodes = 0;
+    let budgetExhausted = false;
+    const nimberMemo = new Map<string, number>();
 
-  function computeNimber(emptiesLeft: number): number {
-    if (emptiesLeft === 0) return 0; // Full board = terminal 0
-    if (nodes >= nodeBudget) {
-      budgetExhausted = true;
-      return -1;
-    }
-    const key = encodeNumericBoard(grid, remaining);
-    const cached = nimberMemo.get(key);
-    if (cached !== undefined) return cached;
+    function computeNimber(emptiesLeft: number): number {
+      if (emptiesLeft === 0) return 0;
+      if (nodes >= nodeBudget) {
+        budgetExhausted = true;
+        return -1;
+      }
+      const key = encodeFastGrid(ctx!.grid);
+      const cached = nimberMemo.get(key);
+      if (cached !== undefined) return cached;
 
-    nodes++;
-    const childNimbers = new Set<number>();
+      nodes++;
+      const childNimbers = new Set<number>();
+      const prevFloors = [0, 0, 0, 0];
 
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (grid[r][c] !== 0) continue;
-        for (let v = 1; v <= n; v++) {
-          if (remaining[v] <= 0) continue;
-          grid[r][c] = v;
-          remaining[v]--;
-          if (!cellLinesViolate(grid, n, r, c)) {
-            const g = computeNimber(emptiesLeft - 1);
-            if (g === -1) {
-              grid[r][c] = 0;
-              remaining[v]++;
-              return -1;
-            }
-            childNimbers.add(g);
-          }
-          grid[r][c] = 0;
-          remaining[v]++;
+      for (let idx = 0; idx < n * n; idx++) {
+        if (ctx!.grid[idx] !== 0) continue;
+        const minCoin = getCellMinCoin(ctx!, idx);
+        for (let v = minCoin; v <= n; v++) {
+          if (ctx!.remaining[v] <= 0) continue;
+          pushMove(ctx!, idx, v, prevFloors);
+          const g = computeNimber(emptiesLeft - 1);
+          popMove(ctx!, idx, v, prevFloors);
+          if (g === -1) return -1;
+          childNimbers.add(g);
         }
       }
+
+      let mex = 0;
+      while (childNimbers.has(mex)) mex++;
+      nimberMemo.set(key, mex);
+      return mex;
     }
 
-    let mex = 0;
-    while (childNimbers.has(mex)) mex++;
-    nimberMemo.set(key, mex);
-    return mex;
-  }
-
-  // Try exact Sprague-Grundy computation for n=2 or endgames (<= 8 empty cells)
-  const canTryExactNimber = n === 2 || emptyCount <= 7;
-  if (canTryExactNimber && !hasViolationNumeric(grid, n)) {
     const winningMoves: SafeMoveOption[] = [];
     const childNimbers = new Set<number>();
+    const prevFloors = [0, 0, 0, 0];
     let aborted = false;
 
     for (const move of safeMoves) {
-      grid[move.r][move.c] = move.value;
-      remaining[move.value]--;
-      const childG = computeNimber(emptyCount - 1);
-      grid[move.r][move.c] = 0;
-      remaining[move.value]++;
+      const idx = move.r * n + move.c;
+      pushMove(ctx, idx, move.value, prevFloors);
+      const childG = computeNimber(ctx.emptyCount);
+      popMove(ctx, idx, move.value, prevFloors);
       if (childG === -1 || budgetExhausted) {
         aborted = true;
         break;
@@ -670,38 +1353,18 @@ export function analyzePosition(board: BoardState, nodeBudget = 22000): Position
     }
   }
 
-  // Fallback for deeper boards: 2-ply trap & safe-mobility heuristic
-  const rankedMoves: { move: SafeMoveOption; oppSafeCount: number; score: number }[] = [];
-  const sampleMoves = safeMoves.slice(0, 64);
+  // Iterative deepening alpha-beta solver for deeper positions
+  const search = runIterativeAlphaBeta(ctx, 45, nodeBudget, 42);
+  const toOption = (c: SearchCandidate): SafeMoveOption => ({
+    r: c.r,
+    c: c.c,
+    value: c.value,
+    coordLabel: formatCoord(c.r, c.c),
+    minMarginAfter: c.minMargin,
+  });
 
-  for (const move of sampleMoves) {
-    grid[move.r][move.c] = move.value;
-    remaining[move.value]--;
-    let oppSafe = 0;
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (grid[r][c] !== 0) continue;
-        for (let v = 1; v <= n; v++) {
-          if (remaining[v] <= 0) continue;
-          grid[r][c] = v;
-          if (!cellLinesViolate(grid, n, r, c)) oppSafe++;
-          grid[r][c] = 0;
-        }
-      }
-    }
-    grid[move.r][move.c] = 0;
-    remaining[move.value]++;
-    nodes++;
-
-    // Immediate trap if oppSafe === 0!
-    const score = oppSafe === 0 ? 100000 : -oppSafe + move.minMarginAfter * 0.25;
-    rankedMoves.push({ move, oppSafeCount: oppSafe, score });
-  }
-
-  rankedMoves.sort((a, b) => b.score - a.score);
-  const immediateWins = rankedMoves.filter((m) => m.oppSafeCount === 0).map((m) => m.move);
-
-  if (immediateWins.length > 0) {
+  if (search.outcome === 'N') {
+    const winners = search.topWinningCandidates.map(toOption);
     return {
       safeMoveCount: safeMoves.length,
       losingMoveCount: losingMoves.length,
@@ -709,12 +1372,31 @@ export function analyzePosition(board: BoardState, nodeBudget = 22000): Position
       outcome: 'N',
       nimber: null,
       confidence: 'EXACT',
-      winningMoves: immediateWins,
-      explanation: `Winning 1-move trap detected! ${immediateWins.length} safe move(s) leave the opponent with 0 safe responses.`,
-      nodesSearched: nodes,
+      winningMoves: winners,
+      explanation: `Forced winning sequence found (${winners.length} winning candidate(s)).`,
+      nodesSearched: search.nodes,
     };
   }
 
+  if (search.exact && (search.outcome === 'P' || search.outcome === 'DRAW')) {
+    return {
+      safeMoveCount: safeMoves.length,
+      losingMoveCount: losingMoves.length,
+      totalLegalMoves: safeMoves.length + losingMoves.length,
+      outcome: search.outcome,
+      nimber: search.outcome === 'P' ? 0 : null,
+      confidence: 'EXACT',
+      winningMoves: search.bestCandidate ? [toOption(search.bestCandidate)] : [],
+      explanation:
+        search.outcome === 'P'
+          ? 'Exact P-position: optimal defense refutes all safe moves.'
+          : 'Exact Draw-position with optimal play on both sides.',
+      nodesSearched: search.nodes,
+    };
+  }
+
+  const latinTemplates = getIncrementalLatinSymmetries(n);
+  const candidates = generateOrderedCandidates(ctx, latinTemplates, true).slice(0, 3).map(toOption);
   return {
     safeMoveCount: safeMoves.length,
     losingMoveCount: losingMoves.length,
@@ -722,9 +1404,9 @@ export function analyzePosition(board: BoardState, nodeBudget = 22000): Position
     outcome: 'UNKNOWN',
     nimber: null,
     confidence: 'HEURISTIC',
-    winningMoves: rankedMoves.slice(0, 3).map((m) => m.move),
-    explanation: `${safeMoves.length} safe moves available (${losingMoves.length} losing placements avoided). Best tactical candidates minimize opponent safe mobility.`,
-    nodesSearched: nodes,
+    winningMoves: candidates,
+    explanation: `${safeMoves.length} safe moves available (${losingMoves.length} losing placements avoided). Candidates prioritize capacity-squeeze and line-floor pressure.`,
+    nodesSearched: search.nodes,
   };
 }
 
@@ -742,67 +1424,42 @@ export function chooseBotMove(
       r: best.r,
       c: best.c,
       value: best.value,
-      reasoning: `No safe moves remain; selected [${best.value}] at ${best.coordLabel} to minimize loss (${best.lossWinnings} pts).`,
+      reasoning: `No safe moves remain; selected [${best.value}] to minimize loss (${best.lossWinnings} pts).`,
     };
   }
 
-  const analysis = analyzePosition(board, 18000);
-  if (analysis.winningMoves.length > 0) {
-    const pick = analysis.winningMoves[0];
+  const ctx = createFastContext(board);
+  if (!ctx) {
+    const pick = safeMoves[0];
+    return {
+      r: pick.r,
+      c: pick.c,
+      value: pick.value,
+      reasoning: `Selected [${pick.value}].`,
+    };
+  }
+
+  // Run fast iterative deepening alpha-beta with Latin-square compatibility & floor-squeeze ordering
+  const search = runIterativeAlphaBeta(ctx, 95, 60000, 36);
+  const pick = search.bestCandidate;
+
+  if (pick) {
     return {
       r: pick.r,
       c: pick.c,
       value: pick.value,
       reasoning:
-        analysis.confidence === 'EXACT'
-          ? `Optimal Nim move: [${pick.value}] at ${pick.coordLabel} forces a P-position.`
-          : `High-pressure move: [${pick.value}] at ${pick.coordLabel} sharply restricts safe replies.`,
+        search.outcome === 'N'
+          ? `Forced winning line found with [${pick.value}].`
+          : `Placed [${pick.value}] using line-floor squeeze & incremental Latin compatibility.`,
     };
   }
 
-  // Otherwise pick the safe move that restricts opponent mobility most while preserving larger coins
-  const n = board.length;
-  const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
-  const remObj = getRemainingCoins(board);
-  const remaining = Array.from({ length: n + 1 }, (_, i) => (i === 0 ? 0 : remObj[i] ?? 0));
-
-  let bestMove = safeMoves[0];
-  let bestScore = -Infinity;
-
-  // Evaluate up to 48 candidate moves evenly sampled if huge
-  const step = Math.max(1, Math.floor(safeMoves.length / 48));
-  for (let i = 0; i < safeMoves.length; i += step) {
-    const m = safeMoves[i];
-    grid[m.r][m.c] = m.value;
-    remaining[m.value]--;
-    let oppSafe = 0;
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (grid[r][c] !== 0) continue;
-        for (let v = 1; v <= n; v++) {
-          if (remaining[v] <= 0) continue;
-          grid[r][c] = v;
-          if (!cellLinesViolate(grid, n, r, c)) oppSafe++;
-          grid[r][c] = 0;
-        }
-      }
-    }
-    grid[m.r][m.c] = 0;
-    remaining[m.value]++;
-
-    // Odd safe replies remaining can be subtly favorable when parity matters; restricting oppSafe is key
-    const centerDist = Math.abs(m.r - (n - 1) / 2) + Math.abs(m.c - (n - 1) / 2);
-    const score = (oppSafe === 0 ? 10000 : -oppSafe) + m.value * 0.15 - centerDist * 0.1;
-    if (score > bestScore) {
-      bestScore = score;
-      bestMove = m;
-    }
-  }
-
+  const fallback = safeMoves[0];
   return {
-    r: bestMove.r,
-    c: bestMove.c,
-    value: bestMove.value,
-    reasoning: `Placed [${bestMove.value}] at ${bestMove.coordLabel} to tighten 45° line capacity.`,
+    r: fallback.r,
+    c: fallback.c,
+    value: fallback.value,
+    reasoning: `Placed [${fallback.value}].`,
   };
 }

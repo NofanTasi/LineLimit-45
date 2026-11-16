@@ -114,25 +114,12 @@ export const HelpModal: React.FC<HelpModalProps> = ({
           </div>
 
           <div>
-            <p className="font-bold text-black dark:text-white">HINTS &amp; STRATEGY</p>
-            <ul className="mt-0.5 list-disc pl-4 space-y-1">
-              <li>
-                <strong>HINTS</strong> shows each cell&apos;s <strong>minimum safe coin</strong>{' '}
-                (or <strong>KO</strong> if dead) top-left, and <strong>OK</strong> /{' '}
-                <strong>-pts</strong> for your selected coin bottom-right.
-              </li>
-              {rule === 'coop' ? (
-                <li>
-                  Try to keep values unique per row and column, avoid crowding 1s and 2s onto the
-                  same diagonal, and keep every square alive (0 KO).
-                </li>
-              ) : (
-                <li>
-                  Use small coins (1s and 2s) to lock line capacities, create KO squares, and strand
-                  your opponent&apos;s remaining small coins.
-                </li>
-              )}
-            </ul>
+            <p className="font-bold text-black dark:text-white">HINTS</p>
+            <p className="mt-0.5">
+              <strong>HINTS</strong> shows each cell&apos;s <strong>minimum safe coin</strong> (or{' '}
+              <strong>KO</strong> if dead) top-left, and <strong>OK</strong> /{' '}
+              <strong>-pts</strong> for your selected coin bottom-right.
+            </p>
           </div>
         </div>
 

@@ -754,6 +754,24 @@ export function getBoardCellHints(
   return map;
 }
 
+export function countDeadCells(board: BoardState): number {
+  const ctx = createFastContext(board);
+  if (!ctx) return 0;
+  let maxRem = 0;
+  for (let v = ctx.n; v >= 1; v--) {
+    if (ctx.remaining[v] > 0) {
+      maxRem = v;
+      break;
+    }
+  }
+  let dead = 0;
+  for (let idx = 0; idx < ctx.n * ctx.n; idx++) {
+    if (ctx.grid[idx] !== 0) continue;
+    if (getCellMinCoin(ctx, idx) > maxRem) dead++;
+  }
+  return dead;
+}
+
 /**
  * Counts exact total distinct safe moves (cell, v) in O(n^2) using the lock-floor theorem.
  */
@@ -974,6 +992,7 @@ function generateOrderedCandidates(
   ctx: FastEngineContext,
   latinTemplates: number[][][],
   preferLatinBonus: boolean,
+  jitterScale = 0,
 ): SearchCandidate[] {
   const { n, grid, remaining } = ctx;
   const candidates: SearchCandidate[] = [];
@@ -1025,6 +1044,10 @@ function generateOrderedCandidates(
           }
         }
 
+        if (jitterScale > 0 && oppSafe > 0) {
+          orderScore += (Math.random() - 0.5) * jitterScale;
+        }
+
         candidates.push({
           idx,
           r,
@@ -1042,11 +1065,50 @@ function generateOrderedCandidates(
   return candidates;
 }
 
+function pickWeightedDiverseCandidate(
+  scored: { cand: SearchCandidate; score: number }[],
+  bestScore: number,
+): SearchCandidate {
+  if (scored.length === 1) return scored[0].cand;
+
+  if (bestScore > WIN_THRESHOLD) {
+    const winners = scored.filter((e) => e.score > WIN_THRESHOLD && bestScore - e.score <= 2);
+    if (winners.length > 0) {
+      return winners[Math.floor(Math.random() * winners.length)].cand;
+    }
+  }
+
+  const nonLosing = scored.filter((e) => e.score > -WIN_THRESHOLD);
+  const poolSource = nonLosing.length > 0 ? nonLosing : scored;
+  const band = bestScore - 14;
+  const bandCandidates = poolSource
+    .filter((e) => e.score >= band)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
+  if (bandCandidates.length <= 1) return scored[0].cand;
+
+  let totalWeight = 0;
+  const weights = bandCandidates.map((e) => {
+    const w = Math.exp((e.score - bestScore) / 5);
+    totalWeight += w;
+    return w;
+  });
+
+  let r = Math.random() * totalWeight;
+  for (let i = 0; i < bandCandidates.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return bandCandidates[i].cand;
+  }
+  return bandCandidates[0].cand;
+}
+
 function runIterativeAlphaBeta(
   ctx: FastEngineContext,
   timeBudgetMs: number,
   nodeBudget: number,
   maxBeamWidth: number,
+  varyPlay = false,
 ): {
   bestCandidate: SearchCandidate | null;
   topWinningCandidates: SearchCandidate[];
@@ -1056,7 +1118,9 @@ function runIterativeAlphaBeta(
 } {
   const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const latinTemplates = getIncrementalLatinSymmetries(ctx.n);
-  const rootCandidates = generateOrderedCandidates(ctx, latinTemplates, true);
+  const pliesPlayed = ctx.n * ctx.n - ctx.emptyCount;
+  const jitterScale = varyPlay ? (pliesPlayed < 6 ? 7.5 : 3.5) : 0;
+  const rootCandidates = generateOrderedCandidates(ctx, latinTemplates, true, jitterScale);
 
   if (rootCandidates.length === 0) {
     return {
@@ -1187,6 +1251,7 @@ function runIterativeAlphaBeta(
   let bestMove = rootCandidates[0];
   let bestRootScore = -Infinity;
   let lastCompletedWinning: SearchCandidate[] = [];
+  let lastCompletedScored: { cand: SearchCandidate; score: number }[] = [];
   let completedExact = false;
 
   const maxDepth = Math.min(ctx.emptyCount, 24);
@@ -1201,6 +1266,7 @@ function runIterativeAlphaBeta(
     let iterBest = rootCandidates[0];
     let iterBestScore = -Infinity;
     const iterWinners: SearchCandidate[] = [];
+    const iterScored: { cand: SearchCandidate; score: number }[] = [];
     const prevFloors = [0, 0, 0, 0];
     let alpha = -WIN_SCORE - 100;
     const beta = WIN_SCORE + 100;
@@ -1223,6 +1289,7 @@ function runIterativeAlphaBeta(
 
       if (aborted) break;
 
+      iterScored.push({ cand, score });
       if (score > WIN_THRESHOLD) {
         iterWinners.push(cand);
       }
@@ -1230,11 +1297,11 @@ function runIterativeAlphaBeta(
         iterBestScore = score;
         iterBest = cand;
       }
-      if (score > alpha) {
+      if (score > alpha && !varyPlay) {
         alpha = score;
       }
-      // If we found an exact forced win at full depth and only care about choosing one, still let shallow depths finish quickly, or break if forced win found in 1-2 plies
-      if (depth >= ctx.emptyCount && score > WIN_THRESHOLD) {
+      // In deterministic/exact analysis, break immediately if a full-depth forced win is proven
+      if (!varyPlay && depth >= ctx.emptyCount && score > WIN_THRESHOLD) {
         break;
       }
     }
@@ -1244,18 +1311,23 @@ function runIterativeAlphaBeta(
     bestMove = iterBest;
     bestRootScore = iterBestScore;
     lastCompletedWinning = iterWinners;
+    lastCompletedScored = iterScored;
 
     if (!anyPruned && depth >= ctx.emptyCount) {
       completedExact = true;
       break;
     }
-    if (!anyPruned && iterBestScore > WIN_THRESHOLD) {
+    if (!anyPruned && !varyPlay && iterBestScore > WIN_THRESHOLD) {
       completedExact = true;
       break;
     }
 
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - start >= timeBudgetMs * 0.7) break;
+  }
+
+  if (varyPlay && lastCompletedScored.length > 1) {
+    bestMove = pickWeightedDiverseCandidate(lastCompletedScored, bestRootScore);
   }
 
   let outcome: 'N' | 'P' | 'DRAW' | 'UNKNOWN' = 'UNKNOWN';
@@ -1475,13 +1547,294 @@ export function analyzePosition(board: BoardState, nodeBudget = 24000): Position
   };
 }
 
+interface CoopHealth {
+  deadCells: number;
+  maxDeficit: number;
+  minHeadroom: number;
+  totalSafe: number;
+}
+
+function evaluateCoopHealth(ctx: FastEngineContext): CoopHealth {
+  const { n, remaining, grid } = ctx;
+  let maxRem = 0;
+  let totalCoinsLeft = 0;
+  const remLeq = new Int16Array(n + 1);
+  for (let v = 1; v <= n; v++) {
+    totalCoinsLeft += remaining[v];
+    remLeq[v] = totalCoinsLeft;
+    if (remaining[v] > 0) maxRem = v;
+  }
+
+  const floorBuckets = new Int16Array(n + 2);
+  let deadCells = 0;
+  for (let idx = 0; idx < n * n; idx++) {
+    if (grid[idx] !== 0) continue;
+    const f = getCellMinCoin(ctx, idx);
+    floorBuckets[f]++;
+    if (f > maxRem) deadCells++;
+  }
+
+  let slotsLeq = 0;
+  let maxDeficit = 0;
+  let minHeadroom = Infinity;
+  for (let k = 1; k <= n; k++) {
+    slotsLeq += floorBuckets[k];
+    const diff = remLeq[k] - slotsLeq;
+    if (diff > maxDeficit) maxDeficit = diff;
+    if (remLeq[k] > 0) {
+      const headroom = slotsLeq - remLeq[k];
+      if (headroom < minHeadroom) minHeadroom = headroom;
+    }
+  }
+
+  return {
+    deadCells,
+    maxDeficit,
+    minHeadroom: minHeadroom === Infinity ? 0 : minHeadroom,
+    totalSafe: countTotalSafeMovesFast(ctx),
+  };
+}
+
+function canCompleteCoopBoard(
+  ctx: FastEngineContext,
+  nodeLimit: number,
+  deadlineMs: number,
+  varyOrder: boolean,
+): boolean {
+  let nodes = 0;
+
+  function dfs(): boolean {
+    if (ctx.emptyCount === 0) return true;
+    if (nodes >= nodeLimit) return false;
+    if ((nodes & 63) === 0) {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now >= deadlineMs) return false;
+    }
+    nodes++;
+
+    const { n, grid, remaining } = ctx;
+    let maxRem = 0;
+    let totalRem = 0;
+    const remLeq = new Int16Array(n + 1);
+    for (let v = 1; v <= n; v++) {
+      totalRem += remaining[v];
+      remLeq[v] = totalRem;
+      if (remaining[v] > 0) maxRem = v;
+    }
+
+    const floorBuckets = new Int16Array(n + 2);
+    let mrvIdx = -1;
+    let mrvCount = Infinity;
+    let mrvFloor = 1;
+
+    for (let idx = 0; idx < n * n; idx++) {
+      if (grid[idx] !== 0) continue;
+      const floor = getCellMinCoin(ctx, idx);
+      floorBuckets[floor]++;
+      if (floor > maxRem) return false; // Dead cell => impossible to fill
+
+      let avail = 0;
+      for (let v = floor; v <= n; v++) {
+        if (remaining[v] > 0) avail++;
+      }
+      if (avail === 0) return false;
+      if (avail < mrvCount) {
+        mrvCount = avail;
+        mrvIdx = idx;
+        mrvFloor = floor;
+      }
+    }
+
+    let slotsLeq = 0;
+    for (let k = 1; k <= n; k++) {
+      slotsLeq += floorBuckets[k];
+      if (remLeq[k] > slotsLeq) return false; // Sublevel deficit => impossible
+    }
+
+    if (mrvIdx === -1) return false;
+
+    const r = Math.floor(mrvIdx / n);
+    const c = mrvIdx % n;
+    const vals: { v: number; order: number }[] = [];
+
+    for (let v = mrvFloor; v <= n; v++) {
+      if (remaining[v] <= 0) continue;
+      // Prefer values not already present in row r or col c (Latin-square preservation)
+      const rowDup = ctx.lineFreq[r * ctx.stride + v] > 0;
+      const colDup = ctx.lineFreq[(n + c) * ctx.stride + v] > 0;
+      let order = (rowDup ? -20 : 0) + (colDup ? -20 : 0) - v * 0.1;
+      if (varyOrder) order += (Math.random() - 0.5) * 3;
+      vals.push({ v, order });
+    }
+    vals.sort((a, b) => b.order - a.order);
+
+    const prevFloors = [0, 0, 0, 0];
+    for (let i = 0; i < vals.length; i++) {
+      const v = vals[i].v;
+      pushMove(ctx, mrvIdx, v, prevFloors);
+      const ok = dfs();
+      popMove(ctx, mrvIdx, v, prevFloors);
+      if (ok) return true;
+    }
+
+    return false;
+  }
+
+  return dfs();
+}
+
+function chooseCoopBotMove(
+  ctx: FastEngineContext,
+  varyPlay: boolean,
+): { r: number; c: number; value: number; reasoning: string } | null {
+  const { n, grid, remaining, stride } = ctx;
+  const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const prevFloors = [0, 0, 0, 0];
+  const latinTemplates = getIncrementalLatinSymmetries(n);
+
+  const compatibleTemplates = latinTemplates.filter((tpl) => {
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const g = grid[r * n + c];
+        if (g !== 0 && tpl[r][c] !== g) return false;
+      }
+    }
+    return true;
+  });
+
+  interface CoopCandidate {
+    idx: number;
+    r: number;
+    c: number;
+    value: number;
+    health: CoopHealth;
+    score: number;
+    provenCompletable: boolean;
+  }
+
+  const candidates: CoopCandidate[] = [];
+
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const idx = r * n + c;
+      if (grid[idx] !== 0) continue;
+      const minCoin = getCellMinCoin(ctx, idx);
+
+      for (let v = minCoin; v <= n; v++) {
+        if (remaining[v] <= 0) continue;
+
+        const rowDup = ctx.lineFreq[r * stride + v] > 0;
+        const colDup = ctx.lineFreq[(n + c) * stride + v] > 0;
+
+        pushMove(ctx, idx, v, prevFloors);
+        const health = evaluateCoopHealth(ctx);
+        const emptiesAfter = ctx.emptyCount;
+        popMove(ctx, idx, v, prevFloors);
+
+        let score = 0;
+        if (emptiesAfter === 0) {
+          // Immediate cooperative victory (full board!)
+          score = 1_000_000;
+        } else if (health.totalSafe === 0) {
+          // Immediate team loss
+          score = -900_000;
+        } else {
+          if (health.deadCells > 0) score -= 50_000 + health.deadCells * 4000;
+          if (health.maxDeficit > 0) score -= 40_000 + health.maxDeficit * 3500;
+
+          // Strong preference for Latin-like unique values per row and column
+          if (rowDup) score -= 35;
+          if (colDup) score -= 35;
+
+          // Maximize small-coin headroom & keep safe mobility healthy
+          score += Math.min(health.minHeadroom, 8) * 10;
+          score += Math.min(health.totalSafe, 250) * 0.25;
+
+          // Gentle nudge to avoid crowding low floors, while relieving tight small-coin supply
+          if (v === minCoin && health.minHeadroom >= 2) score += 2;
+          if (compatibleTemplates.length > 0) {
+            for (let t = 0; t < compatibleTemplates.length; t++) {
+              if (compatibleTemplates[t][r][c] === v) {
+                score += 6;
+                break;
+              }
+            }
+          }
+        }
+
+        if (varyPlay && emptiesAfter > 0 && health.deadCells === 0 && health.maxDeficit === 0) {
+          score += (Math.random() - 0.5) * 14;
+        }
+
+        candidates.push({
+          idx,
+          r,
+          c,
+          value: v,
+          health,
+          score,
+          provenCompletable: emptiesAfter === 0,
+        });
+      }
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  // In late/medium cooperative states (<= 22 empty cells), verify full-board completion with MRV DFS
+  if (ctx.emptyCount <= 22) {
+    const checkCount = Math.min(candidates.length, 24);
+    const totalDeadline = start + 85;
+    for (let i = 0; i < checkCount; i++) {
+      const cand = candidates[i];
+      if (cand.provenCompletable) continue;
+      if (cand.health.deadCells > 0 || cand.health.maxDeficit > 0 || cand.health.totalSafe === 0) {
+        continue;
+      }
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now >= totalDeadline) break;
+
+      pushMove(ctx, cand.idx, cand.value, prevFloors);
+      const ok = canCompleteCoopBoard(ctx, 4000, Math.min(totalDeadline, now + 22), varyPlay);
+      popMove(ctx, cand.idx, cand.value, prevFloors);
+
+      if (ok) {
+        cand.provenCompletable = true;
+        cand.score += 500_000;
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+  }
+
+  let pick = candidates[0];
+  if (varyPlay && candidates.length > 1) {
+    const topScore = candidates[0].score;
+    const band = topScore >= 400_000 ? 50 : 12;
+    const pool = candidates.filter((c) => topScore - c.score <= band).slice(0, 8);
+    if (pool.length > 1) {
+      pick = pool[Math.floor(Math.random() * pool.length)];
+    }
+  }
+
+  return {
+    r: pick.r,
+    c: pick.c,
+    value: pick.value,
+    reasoning: pick.provenCompletable
+      ? `Placed [${pick.value}] on a verified full-board completion path.`
+      : `Placed [${pick.value}] preserving 0 KO squares and sublevel headroom.`,
+  };
+}
+
 export function chooseBotMove(
   board: BoardState,
-  options?: { varyTies?: boolean },
+  options?: { rule?: 'adv' | 'coop'; varyTies?: boolean; varyPlay?: boolean },
 ): { r: number; c: number; value: number; reasoning: string } | null {
   const { safeMoves, losingMoves } = getAllSafeAndLosingMoves(board);
 
-  // If forced to lose, minimize the opponent's winnings!
+  // If forced to lose, minimize the opponent's/team's penalty!
   if (safeMoves.length === 0) {
     if (losingMoves.length === 0) return null;
     const sorted = [...losingMoves].sort((a, b) => a.lossWinnings - b.lossWinnings);
@@ -1505,23 +1858,16 @@ export function chooseBotMove(
     };
   }
 
-  // Run fast iterative deepening alpha-beta with Latin-square compatibility & floor-squeeze ordering
-  const search = runIterativeAlphaBeta(ctx, 95, 60000, 36);
-  let pick = search.bestCandidate;
+  const varyPlay = options?.varyPlay ?? options?.varyTies ?? true;
 
-  // In Bot vs Bot openings, break exact/near ties randomly so repeated matches explore fresh lines
-  const pliesPlayed = ctx.n * ctx.n - ctx.emptyCount;
-  if (options?.varyTies && search.outcome !== 'N' && pliesPlayed < 2) {
-    const latinTemplates = getIncrementalLatinSymmetries(ctx.n);
-    const ordered = generateOrderedCandidates(ctx, latinTemplates, true);
-    if (ordered.length > 1) {
-      const topScore = ordered[0].score;
-      const tied = ordered.filter((c) => topScore - c.score <= 1.5).slice(0, 6);
-      if (tied.length > 1) {
-        pick = tied[Math.floor(Math.random() * tied.length)];
-      }
-    }
+  if (options?.rule === 'coop') {
+    const coopPick = chooseCoopBotMove(ctx, varyPlay);
+    if (coopPick) return coopPick;
   }
+
+  // Adversarial iterative deepening alpha-beta with diverse play sampling
+  const search = runIterativeAlphaBeta(ctx, 95, 60000, 36, varyPlay);
+  const pick = search.bestCandidate;
 
   if (pick) {
     return {

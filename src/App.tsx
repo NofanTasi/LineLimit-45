@@ -5,6 +5,7 @@ import {
   type PlayerId,
   chooseBotMove,
   cloneBoard,
+  countDeadCells,
   createEmptyBoard,
   evaluateBoard,
   formatCoord,
@@ -34,11 +35,13 @@ const BOT_SPEED_OPTIONS = [
   { label: '3s', ms: 3000 },
 ];
 
+type PlayRule = 'adv' | 'coop';
 type GameMode = 'pvp' | 'pvbot' | 'botvp' | 'botvbot';
 
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [n, setN] = useState<number>(4);
+  const [rule, setRule] = useState<PlayRule>('adv');
   const [mode, setMode] = useState<GameMode>('pvp');
   const [board, setBoard] = useState<BoardState>(() => createEmptyBoard(4));
   const [currentPlayer, setCurrentPlayer] = useState<PlayerId>(1);
@@ -73,6 +76,10 @@ export default function App() {
   const evaluation = useMemo(() => evaluateBoard(board), [board]);
   const remainingCoins = useMemo(() => getRemainingCoins(board), [board]);
   const { safeMoves } = useMemo(() => getAllSafeAndLosingMoves(board), [board]);
+  const deadCellCount = useMemo(
+    () => (rule === 'coop' && !evaluation.isGameOver ? countDeadCells(board) : 0),
+    [rule, evaluation.isGameOver, board],
+  );
 
   const winner: PlayerId | null = useMemo(() => {
     if (!evaluation.isGameOver || moves.length === 0) return null;
@@ -130,10 +137,11 @@ export default function App() {
   }, [remainingCoins, selectedCoin, n]);
 
   const startNewGame = useCallback(
-    (nextSize = n, nextMode = mode) => {
+    (nextSize = n, nextMode = mode, nextRule = rule) => {
       setIsBotThinking(false);
       setN(nextSize);
       setMode(nextMode);
+      setRule(nextRule);
       setBoard(createEmptyBoard(nextSize));
       setCurrentPlayer(1);
       setSelectedCoin(1);
@@ -143,7 +151,7 @@ export default function App() {
         setIsAutoPlaying(true);
       }
     },
-    [n, mode],
+    [n, mode, rule],
   );
 
   const applyMove = useCallback(
@@ -224,11 +232,9 @@ export default function App() {
       setIsBotThinking(true);
     }
     const delayMs = mode === 'botvbot' ? botSpeedMs : 450;
-    const shouldVaryOpenings =
-      mode === 'botvbot' || (mode === 'botvp' && moves.length === 0);
 
     const timer = setTimeout(() => {
-      const botPick = chooseBotMove(board, { varyTies: shouldVaryOpenings });
+      const botPick = chooseBotMove(board, { rule, varyPlay: true });
       setIsBotThinking(false);
       if (botPick) {
         applyMove(botPick.r, botPick.c, botPick.value, currentPlayer);
@@ -238,12 +244,12 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [
     mode,
+    rule,
     currentPlayer,
     isAutoPlaying,
     botSpeedMs,
     evaluation.isGameOver,
     evaluation.isBoardFull,
-    moves.length,
     board,
     applyMove,
   ]);
@@ -401,51 +407,85 @@ export default function App() {
           </select>
         </label>
 
+        {/* Play rule selector: Adversarial (v) vs Cooperative (&) */}
+        <div
+          role="group"
+          aria-label="Play rule"
+          className="flex items-center border border-black bg-white dark:border-white dark:bg-black"
+        >
+          <button
+            type="button"
+            title="Adversarial: force opponent to violate"
+            aria-pressed={rule === 'adv'}
+            onClick={() => startNewGame(n, mode, 'adv')}
+            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+              rule === 'adv'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
+            }`}
+          >
+            ADV
+          </button>
+          <button
+            type="button"
+            title="Co-op: work together to fill the board"
+            aria-pressed={rule === 'coop'}
+            onClick={() => startNewGame(n, mode, 'coop')}
+            className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
+              rule === 'coop'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
+            }`}
+          >
+            CO-OP
+          </button>
+        </div>
+
         {/* Opponent mode selector */}
         <div className="flex items-center border border-black bg-white dark:border-white dark:bg-black">
           <button
             type="button"
-            onClick={() => startNewGame(n, 'pvp')}
+            onClick={() => startNewGame(n, 'pvp', rule)}
             className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'pvp'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
-            P v P
+            P {rule === 'coop' ? '&' : 'v'} P
           </button>
           <button
             type="button"
-            onClick={() => startNewGame(n, 'pvbot')}
+            onClick={() => startNewGame(n, 'pvbot', rule)}
             className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'pvbot'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
-            P v BOT
+            P {rule === 'coop' ? '&' : 'v'} BOT
           </button>
           <button
             type="button"
-            onClick={() => startNewGame(n, 'botvp')}
+            onClick={() => startNewGame(n, 'botvp', rule)}
             className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'botvp'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
-            BOT v P
+            BOT {rule === 'coop' ? '&' : 'v'} P
           </button>
           <button
             type="button"
-            onClick={() => startNewGame(n, 'botvbot')}
+            onClick={() => startNewGame(n, 'botvbot', rule)}
             className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
               mode === 'botvbot'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
-            BOT v BOT
+            BOT {rule === 'coop' ? '&' : 'v'} BOT
           </button>
         </div>
 
@@ -573,12 +613,13 @@ export default function App() {
               {evaluation.isGameOver && winner !== null && loser !== null ? (
                 <>
                   <span className="font-bold">
-                    {playerText(winner)} WINS {evaluation.totalWinnings} PTS ({playerText(loser)}{' '}
-                    VIOLATED)
+                    {rule === 'coop'
+                      ? `TEAM LOST — ${playerText(loser)} VIOLATED (${evaluation.totalWinnings} PTS)`
+                      : `${playerText(winner)} WINS ${evaluation.totalWinnings} PTS (${playerText(loser)} VIOLATED)`}
                   </span>
                   <button
                     type="button"
-                    onClick={() => startNewGame(n, mode)}
+                    onClick={() => startNewGame(n, mode, rule)}
                     className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
                   >
                     AGAIN
@@ -586,10 +627,12 @@ export default function App() {
                 </>
               ) : evaluation.isBoardFull ? (
                 <>
-                  <span className="font-bold">BOARD FULL — DRAW</span>
+                  <span className="font-bold">
+                    {rule === 'coop' ? 'BOARD FULL — TEAM WINS!' : 'BOARD FULL — DRAW'}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => startNewGame(n, mode)}
+                    onClick={() => startNewGame(n, mode, rule)}
                     className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white dark:border-white dark:bg-white dark:text-black whitespace-nowrap shrink-0"
                   >
                     AGAIN
@@ -606,6 +649,7 @@ export default function App() {
                   </span>
                   <span className="text-neutral-600 dark:text-neutral-400 tabular-nums">
                     PLY {moves.length + 1} · {safeMoves.length} SAFE
+                    {rule === 'coop' && deadCellCount > 0 ? ` · ${deadCellCount} KO` : ''}
                   </span>
                 </>
               )}
@@ -651,6 +695,12 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            ) : rule === 'coop' ? (
+              <p className="mt-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
+                Co-op: team wins by filling the board with count(≤ v) ≤ v on all 45° lines.
+                <br />
+                Team loses if any coin violates; keep every cell alive (0 KO).
+              </p>
             ) : (
               <p className="mt-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
                 Lose if any 45° line has a coin v with count(≤ v) &gt; v.

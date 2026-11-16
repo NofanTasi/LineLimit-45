@@ -11,6 +11,7 @@ interface GameBoardProps {
   selectedCoin: number | null;
   remainingCountForSelected: number;
   evaluation: BoardEvaluation;
+  isTeamWin?: boolean;
   showSafetyHints: boolean;
   disabled: boolean;
   lastMoveCoord: { r: number; c: number } | null;
@@ -22,6 +23,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   selectedCoin,
   remainingCountForSelected,
   evaluation,
+  isTeamWin = false,
   showSafetyHints,
   disabled,
   lastMoveCoord,
@@ -32,12 +34,29 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const [flashInverted, setFlashInverted] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!evaluation.isGameOver) {
+    if (!evaluation.isGameOver && !isTeamWin) {
       setFlashInverted(false);
       return;
     }
 
-    // Flash offending lines black <-> white 3 times, then settle inverted
+    if (evaluation.isGameOver) {
+      // Flash offending lines black <-> white 3 times, then settle inverted
+      setFlashInverted(true);
+      const timers = [
+        window.setTimeout(() => setFlashInverted(false), 180),
+        window.setTimeout(() => setFlashInverted(true), 340),
+        window.setTimeout(() => setFlashInverted(false), 520),
+        window.setTimeout(() => setFlashInverted(true), 680),
+        window.setTimeout(() => setFlashInverted(false), 860),
+        window.setTimeout(() => setFlashInverted(true), 1020),
+      ];
+
+      return () => {
+        timers.forEach((id) => window.clearTimeout(id));
+      };
+    }
+
+    // Team win in Co-op: flash the full board black <-> white 3 times, then settle normal
     setFlashInverted(true);
     const timers = [
       window.setTimeout(() => setFlashInverted(false), 180),
@@ -45,13 +64,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       window.setTimeout(() => setFlashInverted(false), 520),
       window.setTimeout(() => setFlashInverted(true), 680),
       window.setTimeout(() => setFlashInverted(false), 860),
-      window.setTimeout(() => setFlashInverted(true), 1020),
     ];
 
     return () => {
       timers.forEach((id) => window.clearTimeout(id));
     };
-  }, [evaluation.isGameOver]);
+  }, [evaluation.isGameOver, isTeamWin]);
 
   const violatingCoordSet = useMemo(() => {
     const set = new Set<string>();
@@ -106,7 +124,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               const isHovered = hoverCell?.r === r && hoverCell?.c === c;
               const isViolatingCoin = violatingCoordSet.has(key);
               const isOnViolatingLine = violatingLineCoordSet.has(key);
-              const isInvertedLineCell = isOnViolatingLine && flashInverted;
+              const isInvertedLineCell = flashInverted && (isTeamWin || isOnViolatingLine);
               const isLastMove = lastMoveCoord?.r === r && lastMoveCoord?.c === c;
               const safety = cellSafetyMap.get(key);
 

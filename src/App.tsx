@@ -17,6 +17,7 @@ import { CoinTray } from './components/CoinTray';
 import { Logo } from './components/Logo';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { HelpModal, type GameMode, type PlayRule } from './components/HelpModal';
 import { usePWAUpdate } from './pwa/swManager';
 
 interface HistorySnapshot {
@@ -35,9 +36,6 @@ const BOT_SPEED_OPTIONS = [
   { label: '3s', ms: 3000 },
 ];
 
-type PlayRule = 'adv' | 'coop';
-type GameMode = 'pvp' | 'pvbot' | 'botvp' | 'botvbot';
-
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [n, setN] = useState<number>(4);
@@ -49,6 +47,7 @@ export default function App() {
   const [moves, setMoves] = useState<MoveRecord[]>([]);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [showSafetyHints, setShowSafetyHints] = useState<boolean>(false);
+  const [showHelp, setShowHelp] = useState<boolean>(false);
   const [isBotThinking, setIsBotThinking] = useState<boolean>(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(true);
   const [botSpeedMs, setBotSpeedMs] = useState<number>(1000);
@@ -584,6 +583,14 @@ export default function App() {
           >
             HINTS
           </button>
+          <button
+            type="button"
+            onClick={() => setShowHelp(true)}
+            aria-haspopup="dialog"
+            className="border border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
+          >
+            HELP
+          </button>
         </div>
       </div>
 
@@ -661,6 +668,7 @@ export default function App() {
               selectedCoin={selectedCoin}
               remainingCountForSelected={selectedCoin ? remainingCoins[selectedCoin] ?? 0 : 0}
               evaluation={evaluation}
+              isTeamWin={rule === 'coop' && evaluation.isBoardFull && !evaluation.isGameOver}
               showSafetyHints={showSafetyHints}
               disabled={isBotThinking || !isHumanTurn}
               lastMoveCoord={lastMoveCoord}
@@ -681,7 +689,7 @@ export default function App() {
               onSelectCoin={(val) => setSelectedCoin(val)}
             />
 
-            {/* Violation Proof or Two-Line Rule */}
+            {/* Violation Proof or Fixed-Height Two-Line Rule */}
             {evaluation.isGameOver ? (
               <div className="mt-3 border border-black bg-neutral-100 dark:border-white dark:bg-neutral-950 px-3 py-2 text-[11px] space-y-1">
                 {evaluation.violatingCoins.map((vc) => (
@@ -696,13 +704,13 @@ export default function App() {
                 ))}
               </div>
             ) : rule === 'coop' ? (
-              <p className="mt-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
-                Co-op: team wins by filling the board with count(≤ v) ≤ v on all 45° lines.
+              <p className="mt-3 min-h-[32px] text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
+                Win if board fills with count(≤ v) ≤ v on all 45° lines.
                 <br />
-                Team loses if any coin violates; keep every cell alive (0 KO).
+                Team loses on violation; keep every cell alive (0 KO).
               </p>
             ) : (
-              <p className="mt-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
+              <p className="mt-3 min-h-[32px] text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
                 Lose if any 45° line has a coin v with count(≤ v) &gt; v.
                 <br />
                 Winner scores sum of violating coins.
@@ -715,6 +723,13 @@ export default function App() {
           </div>
         </div>
       </main>
+      <HelpModal
+        isOpen={showHelp}
+        rule={rule}
+        mode={mode}
+        n={n}
+        onClose={() => setShowHelp(false)}
+      />
       <OfflineIndicator />
     </div>
   );

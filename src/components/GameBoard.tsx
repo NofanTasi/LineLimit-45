@@ -89,10 +89,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               let squareBg = isCheckerDark
                 ? 'bg-neutral-100 dark:bg-neutral-900'
                 : 'bg-white dark:bg-black';
+              let squareBorder = 'border-black/35 dark:border-white/35';
               if (isOnViolatingLine) {
                 squareBg = isCheckerDark
-                  ? 'bg-neutral-300 dark:bg-neutral-700'
-                  : 'bg-neutral-200 dark:bg-neutral-800';
+                  ? 'bg-neutral-900 dark:bg-neutral-100'
+                  : 'bg-black dark:bg-white';
+                squareBorder = 'border-white/35 dark:border-black/35';
               }
 
               return (
@@ -107,7 +109,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       ? `Coin ${cell.value} placed by Player ${cell.placedBy}`
                       : `Empty cell`
                   }
-                  className={`relative flex items-center justify-center min-h-0 min-w-0 border-r border-b border-black/35 dark:border-white/35 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-black dark:focus-visible:outline-white ${squareBg} ${
+                  className={`relative flex items-center justify-center min-h-0 min-w-0 border-r border-b ${squareBorder} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-black dark:focus-visible:outline-white ${squareBg} ${
                     c === n - 1 ? 'border-r-0' : ''
                   } ${r === n - 1 ? 'border-b-0' : ''} ${
                     canInteract && !cell ? 'cursor-pointer' : 'cursor-default'
@@ -153,19 +155,23 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     </div>
                   )}
 
-                  {/* Placed Monochrome Coin: P1 = White, P2 = Black, Over-capacity = Grayscale */}
+                  {/* Placed Monochrome Coin: P1 = White, P2 = Black */}
                   {cell && (
                     <div
-                      className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-2 border-black dark:border-white ${
-                        isViolatingCoin
-                          ? 'bg-neutral-600 text-white outline-2 outline-offset-1 outline-black dark:outline-white'
-                          : cell.placedBy === 1
-                            ? 'bg-white text-black'
-                            : 'bg-black text-white'
+                      className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-2 ${
+                        isOnViolatingLine
+                          ? 'border-white dark:border-black'
+                          : 'border-black dark:border-white'
                       } ${
-                        !isViolatingCoin && isLastMove
-                          ? 'outline-1 outline-offset-1 outline-neutral-500'
-                          : ''
+                        cell.placedBy === 1 ? 'bg-white text-black' : 'bg-black text-white'
+                      } ${
+                        isViolatingCoin
+                          ? isOnViolatingLine
+                            ? 'outline-2 outline-offset-1 outline-white dark:outline-black'
+                            : 'outline-2 outline-offset-1 outline-black dark:outline-white'
+                          : isLastMove
+                            ? 'outline-1 outline-offset-1 outline-neutral-500'
+                            : ''
                       }`}
                     >
                       <span className={`font-bold tabular-nums leading-none ${coinFontSize}`}>
@@ -174,14 +180,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
                       {n <= 8 || isViolatingCoin ? (
                         <span
-                          className={`absolute -bottom-1 -right-1 border border-black dark:border-white px-0.5 font-bold leading-tight ${
+                          className={`absolute -bottom-1 -right-1 border px-0.5 font-bold leading-tight ${
                             n >= 9 ? 'text-[7px]' : 'text-[8px]'
                           } ${
-                            isViolatingCoin
-                              ? 'bg-neutral-600 text-white'
-                              : cell.placedBy === 1
-                                ? 'bg-white text-black'
-                                : 'bg-black text-white'
+                            isOnViolatingLine
+                              ? 'border-white dark:border-black'
+                              : 'border-black dark:border-white'
+                          } ${
+                            cell.placedBy === 1 ? 'bg-white text-black' : 'bg-black text-white'
                           }`}
                         >
                           {isViolatingCoin ? '!' : `P${cell.placedBy}`}

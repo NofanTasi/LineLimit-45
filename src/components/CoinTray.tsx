@@ -16,21 +16,20 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
   onSelectCoin,
 }) => {
   const values = Array.from({ length: n }, (_, i) => i + 1);
+  const cols = Math.min(n, 6);
 
   return (
-    <div className="w-full max-w-[540px] mx-auto mt-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-slate-300">
-          Shared Coin Pool — Select a denomination (keys 1–{n})
-        </span>
-        <span className="font-mono text-xs text-slate-400 tabular-nums">
-          {Object.values(remainingCoins).reduce((a, b) => a + b, 0)} / {n * n} left
+    <div className="w-full mt-3 font-mono">
+      <div className="flex items-center justify-between mb-1.5 text-[11px] text-neutral-600">
+        <span>COINS (1–{n})</span>
+        <span className="tabular-nums">
+          {Object.values(remainingCoins).reduce((a, b) => a + b, 0)}/{n * n} LEFT
         </span>
       </div>
 
       <div
-        className="grid gap-2"
-        style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
+        className="grid gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
         {values.map((val) => {
           const count = remainingCoins[val] ?? 0;
@@ -44,27 +43,21 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
               disabled={disabled || isEmpty}
               onClick={() => onSelectCoin(val)}
               aria-pressed={isSelected}
-              className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2.5 transition-all duration-150 min-h-[64px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 ${
+              className={`flex flex-col items-center justify-center border py-1.5 px-1 transition-colors min-h-[48px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${
                 isEmpty
-                  ? 'border-slate-800 bg-slate-900/40 text-slate-600 cursor-not-allowed opacity-50'
+                  ? 'border-neutral-300 bg-neutral-100 text-neutral-400 cursor-not-allowed'
                   : isSelected
-                    ? 'border-amber-400 bg-amber-500/15 text-amber-200 shadow-sm -translate-y-0.5'
-                    : 'border-slate-700 bg-slate-900 text-slate-100 hover:border-slate-500 hover:bg-slate-800/80 cursor-pointer'
+                    ? 'border-2 border-black bg-black text-white cursor-pointer'
+                    : 'border-black bg-white text-black hover:bg-neutral-100 cursor-pointer'
               }`}
             >
-              <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 font-mono text-base font-bold tabular-nums ${
-                  isSelected
-                    ? 'border-amber-400 bg-amber-500 text-slate-950'
-                    : isEmpty
-                      ? 'border-slate-700 bg-slate-800 text-slate-500'
-                      : 'border-slate-500 bg-slate-950 text-slate-100'
+              <span className="text-sm font-bold tabular-nums leading-none">[{val}]</span>
+              <span
+                className={`mt-1 text-[10px] tabular-nums whitespace-nowrap ${
+                  isSelected ? 'text-neutral-200' : 'text-neutral-600'
                 }`}
               >
-                {val}
-              </div>
-              <span className="mt-1.5 font-mono text-[11px] text-slate-400 tabular-nums whitespace-nowrap">
-                ×{count} left
+                ×{count}
               </span>
             </button>
           );

@@ -115,7 +115,7 @@ export function getAllLines(n: number): BoardLine[] {
     for (let r = 0; r < n; r++) cells.push({ r, c });
     lines.push({
       id: `col-${c}`,
-      label: `Col ${String.fromCharCode(65 + c)}`,
+      label: `Col ${c + 1}`,
       kind: 'col',
       cells,
     });
@@ -129,11 +129,9 @@ export function getAllLines(n: number): BoardLine[] {
       if (c >= 0 && c < n) cells.push({ r, c });
     }
     if (cells.length >= 2) {
-      const start = formatCoord(cells[0].r, cells[0].c);
-      const end = formatCoord(cells[cells.length - 1].r, cells[cells.length - 1].c);
       lines.push({
         id: `diagDown-${k}`,
-        label: `Diag \\ (${start}–${end})`,
+        label: `Diag \\`,
         kind: 'diagDown',
         cells,
       });
@@ -148,11 +146,9 @@ export function getAllLines(n: number): BoardLine[] {
       if (c >= 0 && c < n) cells.push({ r, c });
     }
     if (cells.length >= 2) {
-      const start = formatCoord(cells[cells.length - 1].r, cells[cells.length - 1].c);
-      const end = formatCoord(cells[0].r, cells[0].c);
       lines.push({
         id: `diagUp-${s}`,
-        label: `Diag / (${start}–${end})`,
+        label: `Diag /`,
         kind: 'diagUp',
         cells,
       });
@@ -163,7 +159,52 @@ export function getAllLines(n: number): BoardLine[] {
 }
 
 export function getLinesThroughCell(n: number, r: number, c: number): BoardLine[] {
-  return getAllLines(n).filter((line) => line.cells.some((pt) => pt.r === r && pt.c === c));
+  const lines: BoardLine[] = [];
+
+  const rowCells: BoardCoord[] = [];
+  for (let cc = 0; cc < n; cc++) rowCells.push({ r, c: cc });
+  lines.push({ id: `row-${r}`, label: `Row ${r + 1}`, kind: 'row', cells: rowCells });
+
+  const colCells: BoardCoord[] = [];
+  for (let rr = 0; rr < n; rr++) colCells.push({ r: rr, c });
+  lines.push({
+    id: `col-${c}`,
+    label: `Col ${String.fromCharCode(65 + c)}`,
+    kind: 'col',
+    cells: colCells,
+  });
+
+  const k = r - c;
+  const d1Cells: BoardCoord[] = [];
+  for (let rr = 0; rr < n; rr++) {
+    const cc = rr - k;
+    if (cc >= 0 && cc < n) d1Cells.push({ r: rr, c: cc });
+  }
+  if (d1Cells.length >= 2) {
+    lines.push({
+      id: `diagDown-${k}`,
+      label: `Diag \\`,
+      kind: 'diagDown',
+      cells: d1Cells,
+    });
+  }
+
+  const s = r + c;
+  const d2Cells: BoardCoord[] = [];
+  for (let rr = 0; rr < n; rr++) {
+    const cc = s - rr;
+    if (cc >= 0 && cc < n) d2Cells.push({ r: rr, c: cc });
+  }
+  if (d2Cells.length >= 2) {
+    lines.push({
+      id: `diagUp-${s}`,
+      label: `Diag /`,
+      kind: 'diagUp',
+      cells: d2Cells,
+    });
+  }
+
+  return lines;
 }
 
 export function getRemainingCoins(board: BoardState): Record<number, number> {
@@ -261,7 +302,6 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
   const violatingCoins = Array.from(coinViolationMap.values());
   const totalWinnings = violatingCoins.reduce((sum, c) => sum + c.value, 0);
 
-  // Sort occupied lines with most urgent / violated first
   occupiedLines.sort((a, b) => a.tightestMargin - b.tightestMargin);
 
   return {
@@ -274,29 +314,81 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
   };
 }
 
+function inspectCellLinesNumeric(
+  grid: number[][],
+  n: number,
+  r: number,
+  c: number,
+): { safe: boolean; totalWinningsIfLost: number; minMarginAfter: number } {
+  const seenViolations = new Map<number, number>();
+  let minMarginAfter = Infinity;
+
+  const inspectLine = (coords: { rr: number; cc: number }[]) => {
+    if (coords.length === 0) return;
+    for (let i = 0; i < coords.length; i++) {
+      const a = coords[i];
+      const va = grid[a.rr][a.cc];
+      let countLeq = 0;
+      for (let j = 0; j < coords.length; j++) {
+        const b = coords[j];
+        if (grid[b.rr][b.cc] <= va) countLeq++;
+      }
+      const margin = va - countLeq;
+      if (margin < minMarginAfter) minMarginAfter = margin;
+      if (countLeq > va) {
+        seenViolations.set(a.rr * n + a.cc, va);
+      }
+    }
+  };
+
+  // Row r
+  const rowCoins: { rr: number; cc: number }[] = [];
+  for (let cc = 0; cc < n; cc++) if (grid[r][cc] > 0) rowCoins.push({ rr: r, cc });
+  inspectLine(rowCoins);
+
+  // Col c
+  const colCoins: { rr: number; cc: number }[] = [];
+  for (let rr = 0; rr < n; rr++) if (grid[rr][c] > 0) colCoins.push({ rr, cc: c });
+  inspectLine(colCoins);
+
+  // Diag down (r - c)
+  const k = r - c;
+  const d1Coins: { rr: number; cc: number }[] = [];
+  for (let rr = 0; rr < n; rr++) {
+    const cc = rr - k;
+    if (cc >= 0 && cc < n && grid[rr][cc] > 0) d1Coins.push({ rr, cc });
+  }
+  if (d1Coins.length > 1) inspectLine(d1Coins);
+
+  // Diag up (r + c)
+  const s = r + c;
+  const d2Coins: { rr: number; cc: number }[] = [];
+  for (let rr = 0; rr < n; rr++) {
+    const cc = s - rr;
+    if (cc >= 0 && cc < n && grid[rr][cc] > 0) d2Coins.push({ rr, cc });
+  }
+  if (d2Coins.length > 1) inspectLine(d2Coins);
+
+  let totalWinningsIfLost = 0;
+  for (const val of seenViolations.values()) totalWinningsIfLost += val;
+
+  return {
+    safe: seenViolations.size === 0,
+    totalWinningsIfLost,
+    minMarginAfter: minMarginAfter === Infinity ? grid[r][c] - 1 : minMarginAfter,
+  };
+}
+
 export function checkMoveSafety(
   board: BoardState,
   r: number,
   c: number,
   value: number,
-  player: PlayerId = 1,
 ): { safe: boolean; totalWinningsIfLost: number; minMarginAfter: number } {
-  const next = cloneBoard(board);
-  next[r][c] = { value, placedBy: player, moveIndex: 0 };
-  const evalResult = evaluateBoard(next);
-  let minMarginAfter = Infinity;
-  for (const line of evalResult.occupiedLines) {
-    if (line.cells.some((pt) => pt.r === r && pt.c === c)) {
-      if (line.tightestMargin < minMarginAfter) {
-        minMarginAfter = line.tightestMargin;
-      }
-    }
-  }
-  return {
-    safe: !evalResult.isGameOver,
-    totalWinningsIfLost: evalResult.totalWinnings,
-    minMarginAfter: minMarginAfter === Infinity ? value - 1 : minMarginAfter,
-  };
+  const n = board.length;
+  const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
+  grid[r][c] = value;
+  return inspectCellLinesNumeric(grid, n, r, c);
 }
 
 export function getAllSafeAndLosingMoves(board: BoardState): {
@@ -305,6 +397,7 @@ export function getAllSafeAndLosingMoves(board: BoardState): {
 } {
   const n = board.length;
   const remaining = getRemainingCoins(board);
+  const grid = board.map((row) => row.map((cell) => (cell ? cell.value : 0)));
   const safeMoves: SafeMoveOption[] = [];
   const losingMoves: {
     r: number;
@@ -316,11 +409,13 @@ export function getAllSafeAndLosingMoves(board: BoardState): {
 
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
-      if (board[r][c] !== null) continue;
+      if (grid[r][c] !== 0) continue;
+      const coordLabel = formatCoord(r, c);
       for (let v = 1; v <= n; v++) {
         if ((remaining[v] ?? 0) <= 0) continue;
-        const check = checkMoveSafety(board, r, c, v);
-        const coordLabel = formatCoord(r, c);
+        grid[r][c] = v;
+        const check = inspectCellLinesNumeric(grid, n, r, c);
+        grid[r][c] = 0;
         if (check.safe) {
           safeMoves.push({ r, c, value: v, coordLabel, minMarginAfter: check.minMarginAfter });
         } else {

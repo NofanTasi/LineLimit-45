@@ -24,11 +24,19 @@ interface HistorySnapshot {
 }
 
 const BOARD_SIZES = [4, 5, 6, 7, 8, 9, 10, 11, 12];
+const BOT_SPEED_OPTIONS = [
+  { label: '0.25s', ms: 250 },
+  { label: '0.5s', ms: 500 },
+  { label: '1s', ms: 1000 },
+  { label: '1.5s', ms: 1500 },
+  { label: '2s', ms: 2000 },
+  { label: '3s', ms: 3000 },
+];
 
 export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [n, setN] = useState<number>(4);
-  const [mode, setMode] = useState<'pvp' | 'bot'>('pvp');
+  const [mode, setMode] = useState<'pvp' | 'bot' | 'botvbot'>('pvp');
   const [board, setBoard] = useState<BoardState>(() => createEmptyBoard(4));
   const [currentPlayer, setCurrentPlayer] = useState<PlayerId>(1);
   const [selectedCoin, setSelectedCoin] = useState<number | null>(1);
@@ -36,6 +44,8 @@ export default function App() {
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [showSafetyHints, setShowSafetyHints] = useState<boolean>(false);
   const [isBotThinking, setIsBotThinking] = useState<boolean>(false);
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(true);
+  const [botSpeedMs, setBotSpeedMs] = useState<number>(1000);
 
   // Zoom state: 'fit' automatically fits the board + coin tray + status inside viewport
   const [zoomMode, setZoomMode] = useState<'fit' | 'manual'>('fit');
@@ -125,6 +135,9 @@ export default function App() {
       setSelectedCoin(1);
       setMoves([]);
       setHistory([]);
+      if (nextMode === 'botvbot') {
+        setIsAutoPlaying(true);
+      }
     },
     [n, mode],
   );
@@ -167,6 +180,7 @@ export default function App() {
   const handleBoardClick = useCallback(
     (r: number, c: number) => {
       if (evaluation.isGameOver || evaluation.isBoardFull || isBotThinking) return;
+      if (mode === 'botvbot') return;
       if (mode === 'bot' && currentPlayer === 2) return;
       if (selectedCoin === null) return;
       applyMove(r, c, selectedCoin, currentPlayer);
@@ -183,27 +197,44 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (
-      mode !== 'bot' ||
-      currentPlayer !== 2 ||
-      evaluation.isGameOver ||
-      evaluation.isBoardFull
-    ) {
+    if (evaluation.isGameOver || evaluation.isBoardFull) {
       setIsBotThinking(false);
       return;
     }
 
-    setIsBotThinking(true);
+    const isBotTurn =
+      (mode === 'bot' && currentPlayer === 2) ||
+      (mode === 'botvbot' && isAutoPlaying);
+
+    if (!isBotTurn) {
+      setIsBotThinking(false);
+      return;
+    }
+
+    if (mode === 'bot') {
+      setIsBotThinking(true);
+    }
+    const delayMs = mode === 'botvbot' ? botSpeedMs : 450;
+
     const timer = setTimeout(() => {
-      const botPick = chooseBotMove(board);
+      const botPick = chooseBotMove(board, { varyTies: mode === 'botvbot' });
       setIsBotThinking(false);
       if (botPick) {
-        applyMove(botPick.r, botPick.c, botPick.value, 2);
+        applyMove(botPick.r, botPick.c, botPick.value, currentPlayer);
       }
-    }, 450);
+    }, delayMs);
 
     return () => clearTimeout(timer);
-  }, [mode, currentPlayer, evaluation.isGameOver, evaluation.isBoardFull, board, applyMove]);
+  }, [
+    mode,
+    currentPlayer,
+    isAutoPlaying,
+    botSpeedMs,
+    evaluation.isGameOver,
+    evaluation.isBoardFull,
+    board,
+    applyMove,
+  ]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -229,6 +260,9 @@ export default function App() {
 
   function handleUndo() {
     if (history.length === 0 || isBotThinking) return;
+    if (mode === 'botvbot') {
+      setIsAutoPlaying(false);
+    }
     let steps = 1;
     if (mode === 'bot' && history.length >= 2 && currentPlayer === 1) {
       steps = 2;
@@ -248,8 +282,11 @@ export default function App() {
     setManualZoom(next);
   }
 
-  const playerText = (p: PlayerId) =>
-    p === 1 ? 'P1 (WHITE)' : mode === 'bot' ? 'BOT (BLACK)' : 'P2 (BLACK)';
+  const playerText = (p: PlayerId) => {
+    if (mode === 'botvbot') return p === 1 ? 'BOT 1 (WHITE)' : 'BOT 2 (BLACK)';
+    if (mode === 'bot') return p === 1 ? 'P1 (WHITE)' : 'BOT (BLACK)';
+    return p === 1 ? 'P1 (WHITE)' : 'P2 (BLACK)';
+  };
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-white text-black dark:bg-black dark:text-white font-mono flex flex-col">
@@ -346,7 +383,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => startNewGame(n, 'bot')}
-            className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'bot'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
@@ -354,7 +391,57 @@ export default function App() {
           >
             BOT
           </button>
+          <button
+            type="button"
+            onClick={() => startNewGame(n, 'botvbot')}
+            className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
+              mode === 'botvbot'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
+            }`}
+          >
+            BOT v BOT
+          </button>
         </div>
+
+        {/* Bot vs Bot Play/Pause & Speed */}
+        {mode === 'botvbot' && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={evaluation.isGameOver || evaluation.isBoardFull}
+              onClick={() => setIsAutoPlaying((p) => !p)}
+              aria-pressed={isAutoPlaying}
+              className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 disabled:opacity-35 disabled:cursor-not-allowed ${
+                isAutoPlaying
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
+              }`}
+            >
+              {isAutoPlaying ? 'PAUSE' : 'PLAY'}
+            </button>
+
+            <label className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1">
+              <span className="font-semibold text-neutral-600 dark:text-neutral-400">SPEED</span>
+              <select
+                aria-label="Bot move speed"
+                value={botSpeedMs}
+                onChange={(e) => setBotSpeedMs(Number(e.target.value))}
+                className="bg-transparent font-bold tabular-nums text-black dark:text-white focus:outline-none cursor-pointer"
+              >
+                {BOT_SPEED_OPTIONS.map((opt) => (
+                  <option
+                    key={opt.ms}
+                    value={opt.ms}
+                    className="bg-white text-black dark:bg-black dark:text-white"
+                  >
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
         {/* Light (black on white) / Dark (white on black) mode selector */}
         <div
@@ -466,7 +553,11 @@ export default function App() {
               ) : (
                 <>
                   <span className="font-bold">
-                    {isBotThinking ? 'BOT THINKING…' : `TURN: ${playerText(currentPlayer)}`}
+                    {isBotThinking
+                      ? 'BOT THINKING…'
+                      : mode === 'botvbot' && !isAutoPlaying
+                        ? `PAUSED · ${playerText(currentPlayer)}`
+                        : `TURN: ${playerText(currentPlayer)}`}
                   </span>
                   <span className="text-neutral-600 dark:text-neutral-400 tabular-nums">
                     PLY {moves.length + 1} · {safeMoves.length} SAFE
@@ -482,7 +573,7 @@ export default function App() {
               remainingCountForSelected={selectedCoin ? remainingCoins[selectedCoin] ?? 0 : 0}
               evaluation={evaluation}
               showSafetyHints={showSafetyHints}
-              disabled={isBotThinking || (mode === 'bot' && currentPlayer === 2)}
+              disabled={isBotThinking || mode === 'botvbot' || (mode === 'bot' && currentPlayer === 2)}
               lastMoveCoord={lastMoveCoord}
               onPlaceCoin={handleBoardClick}
             />
@@ -496,6 +587,7 @@ export default function App() {
                 evaluation.isGameOver ||
                 evaluation.isBoardFull ||
                 isBotThinking ||
+                (mode === 'botvbot' && isAutoPlaying) ||
                 (mode === 'bot' && currentPlayer === 2)
               }
               onSelectCoin={(val) => setSelectedCoin(val)}

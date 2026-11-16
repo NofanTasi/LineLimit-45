@@ -1412,6 +1412,7 @@ export function analyzePosition(board: BoardState, nodeBudget = 24000): Position
 
 export function chooseBotMove(
   board: BoardState,
+  options?: { varyTies?: boolean },
 ): { r: number; c: number; value: number; reasoning: string } | null {
   const { safeMoves, losingMoves } = getAllSafeAndLosingMoves(board);
 
@@ -1441,7 +1442,21 @@ export function chooseBotMove(
 
   // Run fast iterative deepening alpha-beta with Latin-square compatibility & floor-squeeze ordering
   const search = runIterativeAlphaBeta(ctx, 95, 60000, 36);
-  const pick = search.bestCandidate;
+  let pick = search.bestCandidate;
+
+  // In Bot vs Bot openings, break exact/near ties randomly so repeated matches explore fresh lines
+  const pliesPlayed = ctx.n * ctx.n - ctx.emptyCount;
+  if (options?.varyTies && search.outcome !== 'N' && pliesPlayed < 2) {
+    const latinTemplates = getIncrementalLatinSymmetries(ctx.n);
+    const ordered = generateOrderedCandidates(ctx, latinTemplates, true);
+    if (ordered.length > 1) {
+      const topScore = ordered[0].score;
+      const tied = ordered.filter((c) => topScore - c.score <= 1.5).slice(0, 6);
+      if (tied.length > 1) {
+        pick = tied[Math.floor(Math.random() * tied.length)];
+      }
+    }
+  }
 
   if (pick) {
     return {

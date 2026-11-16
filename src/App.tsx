@@ -13,6 +13,9 @@ import {
 } from './game/engine';
 import { GameBoard } from './components/GameBoard';
 import { CoinTray } from './components/CoinTray';
+import { Logo } from './components/Logo';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 interface HistorySnapshot {
   board: BoardState;
@@ -47,6 +50,10 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute('content', theme === 'dark' ? '#000000' : '#ffffff');
+    }
   }, [theme]);
 
   const evaluation = useMemo(() => evaluateBoard(board), [board]);
@@ -248,9 +255,12 @@ export default function App() {
     <div className="h-screen w-screen overflow-hidden bg-white text-black dark:bg-black dark:text-white font-mono flex flex-col">
       {/* Minimal Single-Row Header */}
       <header className="shrink-0 border-b border-black bg-white dark:border-white dark:bg-black px-4 py-2.5 flex items-center justify-between gap-4">
-        <span className="text-sm font-bold tracking-tight whitespace-nowrap shrink-0">
-          LINELIMIT 45
-        </span>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Logo className="h-7 w-7 shrink-0" />
+          <span className="text-sm font-bold tracking-tight whitespace-nowrap shrink-0">
+            LINELIMIT 45
+          </span>
+        </div>
 
         <div className="flex items-center gap-2 shrink-0">
           {/* Zoom Controls */}
@@ -284,6 +294,8 @@ export default function App() {
               +
             </button>
           </div>
+
+          <PWAInstallButton />
 
           <button
             type="button"
@@ -513,6 +525,7 @@ export default function App() {
           </div>
         </div>
       </main>
+      <OfflineIndicator />
     </div>
   );
 }

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#ffffff" />
+  <rect x="4" y="4" width="56" height="56" fill="#ffffff" stroke="#000000" stroke-width="4" />
+  <!-- Left upright L -->
+  <rect x="11" y="19" width="3" height="26" fill="#000000" />
+  <rect x="11" y="42" width="7" height="3" fill="#000000" />
+  <!-- Numeral 4 -->
+  <rect x="21" y="21" width="3" height="13" fill="#000000" />
+  <rect x="21" y="31" width="9" height="3" fill="#000000" />
+  <rect x="27" y="21" width="3" height="22" fill="#000000" />
+  <!-- Numeral 5 -->
+  <rect x="33" y="21" width="10" height="3" fill="#000000" />
+  <rect x="33" y="21" width="3" height="12" fill="#000000" />
+  <rect x="33" y="30" width="10" height="3" fill="#000000" />
+  <rect x="40" y="30" width="3" height="13" fill="#000000" />
+  <rect x="33" y="40" width="10" height="3" fill="#000000" />
+  <!-- Right mirrored L -->
+  <rect x="50" y="19" width="3" height="26" fill="#000000" />
+  <rect x="46" y="42" width="7" height="3" fill="#000000" />
+</svg>

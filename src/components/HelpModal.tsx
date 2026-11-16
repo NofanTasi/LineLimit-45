@@ -103,7 +103,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({
               <p className="mt-0.5">
                 Force your opponent into a violation (or leave them with zero safe moves). A player
                 who triggers a violation <strong>loses immediately</strong>, and the winner scores
-                the <strong>sum of all violating coins</strong>.
+                the <strong>maximum sum of coins ≤ any violated threshold v</strong> (counted once
+                per square across violated lines).
               </p>
             )}
           </div>

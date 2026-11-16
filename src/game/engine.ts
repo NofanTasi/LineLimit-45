@@ -44,6 +44,9 @@ export interface LineRiskInfo {
   hasViolation: boolean;
   tightestMargin: number; // min(coin.value - countLeq); 0 = on edge, <0 = violated
   tightestValue: number | null;
+  violatedThreshold: number | null;
+  thresholdCount: number;
+  thresholdSum: number;
 }
 
 export interface BoardEvaluation {
@@ -356,6 +359,8 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
     }
   }
 
+  const scoredCoinMap = new Map<string, number>();
+
   for (const line of lines) {
     const coins: { r: number; c: number; value: number; placedBy: PlayerId }[] = [];
     for (const pt of line.cells) {
@@ -369,6 +374,8 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
     let hasViolation = false;
     let tightestMargin = Infinity;
     let tightestValue: number | null = null;
+    let maxViolatedThreshold: number | null = null;
+    let maxViolatedCount = 0;
 
     for (const coin of coins) {
       let countLeq = 0;
@@ -382,6 +389,10 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
       }
       if (countLeq > coin.value) {
         hasViolation = true;
+        if (maxViolatedThreshold === null || coin.value > maxViolatedThreshold) {
+          maxViolatedThreshold = coin.value;
+          maxViolatedCount = countLeq;
+        }
         const key = `${coin.r},${coin.c}`;
         let detail = coinViolationMap.get(key);
         if (!detail) {
@@ -402,6 +413,16 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
       }
     }
 
+    let thresholdSum = 0;
+    if (maxViolatedThreshold !== null) {
+      for (const coin of coins) {
+        if (coin.value <= maxViolatedThreshold) {
+          thresholdSum += coin.value;
+          scoredCoinMap.set(`${coin.r},${coin.c}`, coin.value);
+        }
+      }
+    }
+
     const lineInfo: LineRiskInfo = {
       lineId: line.id,
       lineLabel: line.label,
@@ -411,6 +432,9 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
       hasViolation,
       tightestMargin,
       tightestValue,
+      violatedThreshold: maxViolatedThreshold,
+      thresholdCount: maxViolatedCount,
+      thresholdSum,
     };
 
     occupiedLines.push(lineInfo);
@@ -420,7 +444,8 @@ export function evaluateBoard(board: BoardState): BoardEvaluation {
   }
 
   const violatingCoins = Array.from(coinViolationMap.values());
-  const totalWinnings = violatingCoins.reduce((sum, c) => sum + c.value, 0);
+  let totalWinnings = 0;
+  for (const val of scoredCoinMap.values()) totalWinnings += val;
 
   occupiedLines.sort((a, b) => a.tightestMargin - b.tightestMargin);
 
@@ -445,6 +470,7 @@ function inspectCellLinesNumeric(
 
   const inspectLine = (coords: { rr: number; cc: number }[]) => {
     if (coords.length === 0) return;
+    let maxViolatedThreshold = -1;
     for (let i = 0; i < coords.length; i++) {
       const a = coords[i];
       const va = grid[a.rr][a.cc];
@@ -455,8 +481,17 @@ function inspectCellLinesNumeric(
       }
       const margin = va - countLeq;
       if (margin < minMarginAfter) minMarginAfter = margin;
-      if (countLeq > va) {
-        seenViolations.set(a.rr * n + a.cc, va);
+      if (countLeq > va && va > maxViolatedThreshold) {
+        maxViolatedThreshold = va;
+      }
+    }
+    if (maxViolatedThreshold > 0) {
+      for (let i = 0; i < coords.length; i++) {
+        const a = coords[i];
+        const va = grid[a.rr][a.cc];
+        if (va <= maxViolatedThreshold) {
+          seenViolations.set(a.rr * n + a.cc, va);
+        }
       }
     }
   };

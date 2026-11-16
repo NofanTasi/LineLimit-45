@@ -692,16 +692,24 @@ export default function App() {
             {/* Violation Proof or Fixed-Height Two-Line Rule */}
             {evaluation.isGameOver ? (
               <div className="mt-3 border border-black bg-neutral-100 dark:border-white dark:bg-neutral-950 px-3 py-2 text-[11px] space-y-1">
-                {evaluation.violatingCoins.map((vc) => (
-                  <div key={`${vc.r},${vc.c}`} className="flex justify-between gap-2 tabular-nums">
-                    <span className="font-bold">COIN [{vc.value}]</span>
-                    <span className="text-neutral-700 dark:text-neutral-300">
-                      {vc.lines
-                        .map((l) => `${l.lineLabel}: ${l.countLeq} ≤ ${vc.value}`)
-                        .join(' · ')}
-                    </span>
-                  </div>
-                ))}
+                {evaluation.violatingLines.map((line) => {
+                  const thr = line.violatedThreshold ?? 0;
+                  const scoredVals = line.coins
+                    .map((c) => c.value)
+                    .filter((v) => v <= thr)
+                    .sort((a, b) => a - b);
+                  return (
+                    <div key={line.lineId} className="flex justify-between gap-2 tabular-nums">
+                      <span className="font-bold">
+                        {line.lineLabel.toUpperCase()} · count(≤ {thr}) = {line.thresholdCount} &gt;{' '}
+                        {thr}
+                      </span>
+                      <span className="text-neutral-700 dark:text-neutral-300">
+                        {scoredVals.join('+')}={line.thresholdSum} PTS
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             ) : rule === 'coop' ? (
               <p className="mt-3 min-h-[32px] text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
@@ -713,7 +721,7 @@ export default function App() {
               <p className="mt-3 min-h-[32px] text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
                 Lose if any 45° line has a coin v with count(≤ v) &gt; v.
                 <br />
-                Winner scores sum of violating coins.
+                Winner scores max sum of coins ≤ violated v.
               </p>
             )}
 

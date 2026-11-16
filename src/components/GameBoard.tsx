@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   type BoardEvaluation,
   type BoardState,
@@ -29,6 +29,29 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 }) => {
   const n = board.length;
   const [hoverCell, setHoverCell] = useState<{ r: number; c: number } | null>(null);
+  const [flashInverted, setFlashInverted] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!evaluation.isGameOver) {
+      setFlashInverted(false);
+      return;
+    }
+
+    // Flash offending lines black <-> white 3 times, then settle inverted
+    setFlashInverted(true);
+    const timers = [
+      window.setTimeout(() => setFlashInverted(false), 180),
+      window.setTimeout(() => setFlashInverted(true), 340),
+      window.setTimeout(() => setFlashInverted(false), 520),
+      window.setTimeout(() => setFlashInverted(true), 680),
+      window.setTimeout(() => setFlashInverted(false), 860),
+      window.setTimeout(() => setFlashInverted(true), 1020),
+    ];
+
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [evaluation.isGameOver]);
 
   const violatingCoordSet = useMemo(() => {
     const set = new Set<string>();
@@ -83,6 +106,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               const isHovered = hoverCell?.r === r && hoverCell?.c === c;
               const isViolatingCoin = violatingCoordSet.has(key);
               const isOnViolatingLine = violatingLineCoordSet.has(key);
+              const isInvertedLineCell = isOnViolatingLine && flashInverted;
               const isLastMove = lastMoveCoord?.r === r && lastMoveCoord?.c === c;
               const safety = cellSafetyMap.get(key);
 
@@ -90,7 +114,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                 ? 'bg-neutral-100 dark:bg-neutral-900'
                 : 'bg-white dark:bg-black';
               let squareBorder = 'border-black/35 dark:border-white/35';
-              if (isOnViolatingLine) {
+              if (isInvertedLineCell) {
                 squareBg = isCheckerDark
                   ? 'bg-neutral-900 dark:bg-neutral-100'
                   : 'bg-black dark:bg-white';
@@ -159,14 +183,14 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {cell && (
                     <div
                       className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-2 ${
-                        isOnViolatingLine
+                        isInvertedLineCell
                           ? 'border-white dark:border-black'
                           : 'border-black dark:border-white'
                       } ${
                         cell.placedBy === 1 ? 'bg-white text-black' : 'bg-black text-white'
                       } ${
                         isViolatingCoin
-                          ? isOnViolatingLine
+                          ? isInvertedLineCell
                             ? 'outline-2 outline-offset-1 outline-white dark:outline-black'
                             : 'outline-2 outline-offset-1 outline-black dark:outline-white'
                           : isLastMove
@@ -183,7 +207,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                           className={`absolute -bottom-1 -right-1 border px-0.5 font-bold leading-tight ${
                             n >= 9 ? 'text-[7px]' : 'text-[8px]'
                           } ${
-                            isOnViolatingLine
+                            isInvertedLineCell
                               ? 'border-white dark:border-black'
                               : 'border-black dark:border-white'
                           } ${

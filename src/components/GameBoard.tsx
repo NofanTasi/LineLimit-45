@@ -77,8 +77,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
   return (
     <div className="w-full select-none font-mono">
-      {/* Classic B&W Grid (no cell names or axis labels) */}
-      <div className="relative w-full aspect-square border-2 border-black bg-white">
+      {/* Classic B&W Grid (supports light & dark modes) */}
+      <div className="relative w-full aspect-square border-2 border-black bg-white dark:border-white dark:bg-black">
         <div
           className="relative grid h-full w-full"
           style={{
@@ -97,9 +97,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               const isLastMove = lastMoveCoord?.r === r && lastMoveCoord?.c === c;
               const safety = cellSafetyMap.get(key);
 
-              let squareBg = isCheckerDark ? 'bg-neutral-100' : 'bg-white';
+              let squareBg = isCheckerDark
+                ? 'bg-neutral-100 dark:bg-neutral-900'
+                : 'bg-white dark:bg-black';
               if (isOnViolatingLine) {
-                squareBg = isCheckerDark ? 'bg-neutral-300' : 'bg-neutral-200';
+                squareBg = isCheckerDark
+                  ? 'bg-neutral-300 dark:bg-neutral-700'
+                  : 'bg-neutral-200 dark:bg-neutral-800';
               }
 
               return (
@@ -114,7 +118,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       ? `Coin ${cell.value} placed by Player ${cell.placedBy}`
                       : `Empty cell`
                   }
-                  className={`relative flex items-center justify-center min-h-0 min-w-0 border-r border-b border-black/35 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-black ${squareBg} ${
+                  className={`relative flex items-center justify-center min-h-0 min-w-0 border-r border-b border-black/35 dark:border-white/35 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-black dark:focus-visible:outline-white ${squareBg} ${
                     c === n - 1 ? 'border-r-0' : ''
                   } ${r === n - 1 ? 'border-b-0' : ''} ${
                     canInteract && !cell ? 'cursor-pointer' : 'cursor-default'
@@ -124,7 +128,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                     <span
                       className={`pointer-events-none absolute bottom-0.5 right-0.5 px-0.5 font-semibold tabular-nums ${
                         n >= 9 ? 'text-[8px]' : 'text-[10px]'
-                      } ${safety.safe ? 'text-black' : 'bg-black text-white'}`}
+                      } ${
+                        safety.safe
+                          ? 'text-black dark:text-white'
+                          : 'bg-black text-white dark:bg-white dark:text-black'
+                      }`}
                     >
                       {safety.safe ? 'OK' : `-${safety.winnings}`}
                     </span>
@@ -134,7 +142,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {!cell && isHovered && canInteract && selectedCoin !== null && (
                     <div
                       aria-hidden="true"
-                      className={`flex ${coinCircleSize} items-center justify-center rounded-full border border-dashed border-black bg-white/80 font-bold text-neutral-600 ${coinFontSize}`}
+                      className={`flex ${coinCircleSize} items-center justify-center rounded-full border border-dashed border-black bg-white/80 font-bold text-neutral-600 dark:border-white dark:bg-black/80 dark:text-neutral-300 ${coinFontSize}`}
                     >
                       {selectedCoin}
                     </div>
@@ -143,9 +151,9 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {/* Placed Monochrome Coin: P1 = White, P2 = Black, Over-capacity = Grayscale */}
                   {cell && (
                     <div
-                      className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-2 border-black ${
+                      className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-2 border-black dark:border-white ${
                         isViolatingCoin
-                          ? 'bg-neutral-600 text-white outline-2 outline-offset-1 outline-black'
+                          ? 'bg-neutral-600 text-white outline-2 outline-offset-1 outline-black dark:outline-white'
                           : cell.placedBy === 1
                             ? 'bg-white text-black'
                             : 'bg-black text-white'
@@ -161,7 +169,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 
                       {n <= 8 || isViolatingCoin ? (
                         <span
-                          className={`absolute -bottom-1 -right-1 border border-black px-0.5 font-bold leading-tight ${
+                          className={`absolute -bottom-1 -right-1 border border-black dark:border-white px-0.5 font-bold leading-tight ${
                             n >= 9 ? 'text-[7px]' : 'text-[8px]'
                           } ${
                             isViolatingCoin

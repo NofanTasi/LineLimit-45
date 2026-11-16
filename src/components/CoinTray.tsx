@@ -16,52 +16,59 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
   onSelectCoin,
 }) => {
   const values = Array.from({ length: n }, (_, i) => i + 1);
-  const cols = Math.min(n, 6);
+  const rows: number[][] =
+    n <= 6 ? [values] : [values.slice(0, Math.floor(n / 2)), values.slice(Math.floor(n / 2))];
+  const maxCols = Math.max(...rows.map((r) => r.length));
+  const buttonWidth = `calc((100% - ${(maxCols - 1) * 6}px) / ${maxCols})`;
 
   return (
     <div className="w-full mt-3 font-mono">
-      <div className="flex items-center justify-between mb-1.5 text-[11px] text-neutral-600">
+      <div className="flex items-center justify-between mb-1.5 text-[11px] text-neutral-600 dark:text-neutral-400">
         <span>COINS (1–{n})</span>
         <span className="tabular-nums">
           {Object.values(remainingCoins).reduce((a, b) => a + b, 0)}/{n * n} LEFT
         </span>
       </div>
 
-      <div
-        className="grid gap-1.5"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
-        {values.map((val) => {
-          const count = remainingCoins[val] ?? 0;
-          const isSelected = selectedCoin === val && count > 0;
-          const isEmpty = count === 0;
+      <div className="flex flex-col items-center gap-[6px]">
+        {rows.map((rowValues, rowIdx) => (
+          <div key={rowIdx} className="flex w-full items-center justify-center gap-[6px]">
+            {rowValues.map((val) => {
+              const count = remainingCoins[val] ?? 0;
+              const isSelected = selectedCoin === val && count > 0;
+              const isEmpty = count === 0;
 
-          return (
-            <button
-              key={val}
-              type="button"
-              disabled={disabled || isEmpty}
-              onClick={() => onSelectCoin(val)}
-              aria-pressed={isSelected}
-              className={`flex flex-col items-center justify-center border py-1.5 px-1 transition-colors min-h-[48px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black ${
-                isEmpty
-                  ? 'border-neutral-300 bg-neutral-100 text-neutral-400 cursor-not-allowed'
-                  : isSelected
-                    ? 'border-2 border-black bg-black text-white cursor-pointer'
-                    : 'border-black bg-white text-black hover:bg-neutral-100 cursor-pointer'
-              }`}
-            >
-              <span className="text-sm font-bold tabular-nums leading-none">[{val}]</span>
-              <span
-                className={`mt-1 text-[10px] tabular-nums whitespace-nowrap ${
-                  isSelected ? 'text-neutral-200' : 'text-neutral-600'
-                }`}
-              >
-                ×{count}
-              </span>
-            </button>
-          );
-        })}
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  disabled={disabled || isEmpty}
+                  onClick={() => onSelectCoin(val)}
+                  aria-pressed={isSelected}
+                  style={{ width: buttonWidth }}
+                  className={`flex flex-col items-center justify-center border py-1.5 px-1 transition-colors min-h-[48px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
+                    isEmpty
+                      ? 'border-neutral-300 bg-neutral-100 text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-600 cursor-not-allowed'
+                      : isSelected
+                        ? 'border-2 border-black bg-black text-white dark:border-white dark:bg-white dark:text-black cursor-pointer'
+                        : 'border-black bg-white text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 cursor-pointer'
+                  }`}
+                >
+                  <span className="text-sm font-bold tabular-nums leading-none">[{val}]</span>
+                  <span
+                    className={`mt-1 text-[10px] tabular-nums whitespace-nowrap ${
+                      isSelected
+                        ? 'text-neutral-200 dark:text-neutral-700'
+                        : 'text-neutral-600 dark:text-neutral-400'
+                    }`}
+                  >
+                    ×{count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );

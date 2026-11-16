@@ -23,6 +23,7 @@ interface HistorySnapshot {
 const BOARD_SIZES = [4, 5, 6, 7, 8, 9, 10, 11, 12];
 
 export default function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [n, setN] = useState<number>(4);
   const [mode, setMode] = useState<'pvp' | 'bot'>('pvp');
   const [board, setBoard] = useState<BoardState>(() => createEmptyBoard(4));
@@ -43,6 +44,10 @@ export default function App() {
   const [stageHeight, setStageHeight] = useState<number>(620);
 
   const baseStageWidth = n <= 6 ? 480 : n <= 9 ? 540 : 620;
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
 
   const evaluation = useMemo(() => evaluateBoard(board), [board]);
   const remainingCoins = useMemo(() => getRemainingCoins(board), [board]);
@@ -240,21 +245,21 @@ export default function App() {
     p === 1 ? 'P1 (WHITE)' : mode === 'bot' ? 'BOT (BLACK)' : 'P2 (BLACK)';
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-white text-black font-mono flex flex-col">
+    <div className="h-screen w-screen overflow-hidden bg-white text-black dark:bg-black dark:text-white font-mono flex flex-col">
       {/* Minimal Single-Row Header */}
-      <header className="shrink-0 border-b border-black bg-white px-4 py-2.5 flex items-center justify-between gap-4">
+      <header className="shrink-0 border-b border-black bg-white dark:border-white dark:bg-black px-4 py-2.5 flex items-center justify-between gap-4">
         <span className="text-sm font-bold tracking-tight whitespace-nowrap shrink-0">
           LINELIMIT 45
         </span>
 
         <div className="flex items-center gap-2 shrink-0">
           {/* Zoom Controls */}
-          <div className="flex items-center border border-black">
+          <div className="flex items-center border border-black dark:border-white">
             <button
               type="button"
               onClick={() => stepZoom(-0.1)}
               aria-label="Zoom out"
-              className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 border-r border-black whitespace-nowrap shrink-0"
+              className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-900 border-r border-black dark:border-white whitespace-nowrap shrink-0"
             >
               -
             </button>
@@ -262,8 +267,10 @@ export default function App() {
               type="button"
               onClick={() => setZoomMode('fit')}
               title="Fit game to screen"
-              className={`px-2.5 py-1 text-[11px] font-semibold tabular-nums whitespace-nowrap shrink-0 border-r border-black ${
-                zoomMode === 'fit' ? 'bg-black text-white' : 'bg-white text-black hover:bg-neutral-100'
+              className={`px-2.5 py-1 text-[11px] font-semibold tabular-nums whitespace-nowrap shrink-0 border-r border-black dark:border-white ${
+                zoomMode === 'fit'
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
               }`}
             >
               FIT {Math.round(effectiveZoom * 100)}%
@@ -272,7 +279,7 @@ export default function App() {
               type="button"
               onClick={() => stepZoom(0.1)}
               aria-label="Zoom in"
-              className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 whitespace-nowrap shrink-0"
+              className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
             >
               +
             </button>
@@ -281,7 +288,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => startNewGame(n, mode)}
-            className="border border-black bg-black px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-800 whitespace-nowrap shrink-0"
+            className="border border-black bg-black px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
           >
             NEW
           </button>
@@ -289,31 +296,37 @@ export default function App() {
       </header>
 
       {/* Minimal Controls Strip */}
-      <div className="shrink-0 border-b border-black/20 bg-neutral-50 px-4 py-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
+      <div className="shrink-0 border-b border-black/20 bg-neutral-50 dark:border-white/25 dark:bg-neutral-950 px-4 py-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
         {/* Size list selector (4 to 12) */}
-        <label className="flex items-center gap-1.5 border border-black bg-white px-2 py-1">
-          <span className="font-semibold text-neutral-600">SIZE</span>
+        <label className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1">
+          <span className="font-semibold text-neutral-600 dark:text-neutral-400">SIZE</span>
           <select
             aria-label="Board size"
             value={n}
             onChange={(e) => startNewGame(Number(e.target.value), mode)}
-            className="bg-transparent font-bold tabular-nums text-black focus:outline-none cursor-pointer"
+            className="bg-transparent font-bold tabular-nums text-black dark:text-white focus:outline-none cursor-pointer"
           >
             {BOARD_SIZES.map((size) => (
-              <option key={size} value={size}>
+              <option
+                key={size}
+                value={size}
+                className="bg-white text-black dark:bg-black dark:text-white"
+              >
                 {size}×{size}
               </option>
             ))}
           </select>
         </label>
 
-        {/* Mode selector */}
-        <div className="flex items-center border border-black bg-white">
+        {/* Opponent mode selector */}
+        <div className="flex items-center border border-black bg-white dark:border-white dark:bg-black">
           <button
             type="button"
             onClick={() => startNewGame(n, 'pvp')}
-            className={`px-2.5 py-1 font-semibold border-r border-black/30 whitespace-nowrap shrink-0 ${
-              mode === 'pvp' ? 'bg-black text-white' : 'text-black hover:bg-neutral-100'
+            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+              mode === 'pvp'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
             2P
@@ -322,10 +335,46 @@ export default function App() {
             type="button"
             onClick={() => startNewGame(n, 'bot')}
             className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
-              mode === 'bot' ? 'bg-black text-white' : 'text-black hover:bg-neutral-100'
+              mode === 'bot'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
             BOT
+          </button>
+        </div>
+
+        {/* Light (black on white) / Dark (white on black) mode selector */}
+        <div
+          role="group"
+          aria-label="Display theme"
+          className="flex items-center border border-black bg-white dark:border-white dark:bg-black"
+        >
+          <button
+            type="button"
+            title="Light mode (black on white)"
+            aria-pressed={theme === 'light'}
+            onClick={() => setTheme('light')}
+            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+              theme === 'light'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
+            }`}
+          >
+            LIGHT
+          </button>
+          <button
+            type="button"
+            title="Dark mode (white on black)"
+            aria-pressed={theme === 'dark'}
+            onClick={() => setTheme('dark')}
+            className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
+              theme === 'dark'
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
+            }`}
+          >
+            DARK
           </button>
         </div>
 
@@ -335,7 +384,7 @@ export default function App() {
             type="button"
             onClick={handleUndo}
             disabled={history.length === 0 || isBotThinking}
-            className="border border-black bg-white px-2.5 py-1 font-semibold hover:bg-neutral-100 disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+            className="border border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
           >
             UNDO
           </button>
@@ -343,8 +392,10 @@ export default function App() {
             type="button"
             onClick={() => setShowSafetyHints((s) => !s)}
             aria-pressed={showSafetyHints}
-            className={`border border-black px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
-              showSafetyHints ? 'bg-black text-white' : 'bg-white text-black hover:bg-neutral-100'
+            className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
+              showSafetyHints
+                ? 'bg-black text-white dark:bg-white dark:text-black'
+                : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
             HINTS
@@ -374,7 +425,7 @@ export default function App() {
             className="flex flex-col"
           >
             {/* Status Line */}
-            <div className="mb-2.5 flex items-center justify-between gap-2 border border-black px-3 py-2 text-xs">
+            <div className="mb-2.5 flex items-center justify-between gap-2 border border-black dark:border-white px-3 py-2 text-xs">
               {evaluation.isGameOver && winner !== null && loser !== null ? (
                 <>
                   <span className="font-bold">
@@ -384,7 +435,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => startNewGame(n, mode)}
-                    className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-neutral-800 whitespace-nowrap shrink-0"
+                    className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
                   >
                     AGAIN
                   </button>
@@ -395,7 +446,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => startNewGame(n, mode)}
-                    className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white whitespace-nowrap shrink-0"
+                    className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white dark:border-white dark:bg-white dark:text-black whitespace-nowrap shrink-0"
                   >
                     AGAIN
                   </button>
@@ -405,7 +456,7 @@ export default function App() {
                   <span className="font-bold">
                     {isBotThinking ? 'BOT THINKING…' : `TURN: ${playerText(currentPlayer)}`}
                   </span>
-                  <span className="text-neutral-600 tabular-nums">
+                  <span className="text-neutral-600 dark:text-neutral-400 tabular-nums">
                     PLY {moves.length + 1} · {safeMoves.length} SAFE
                   </span>
                 </>
@@ -440,11 +491,11 @@ export default function App() {
 
             {/* Violation Proof or Two-Line Rule */}
             {evaluation.isGameOver ? (
-              <div className="mt-3 border border-black bg-neutral-100 px-3 py-2 text-[11px] space-y-1">
+              <div className="mt-3 border border-black bg-neutral-100 dark:border-white dark:bg-neutral-950 px-3 py-2 text-[11px] space-y-1">
                 {evaluation.violatingCoins.map((vc) => (
                   <div key={`${vc.r},${vc.c}`} className="flex justify-between gap-2 tabular-nums">
                     <span className="font-bold">COIN [{vc.value}]</span>
-                    <span className="text-neutral-700">
+                    <span className="text-neutral-700 dark:text-neutral-300">
                       {vc.lines
                         .map((l) => `${l.lineLabel}: ${l.countLeq} ≤ ${vc.value}`)
                         .join(' · ')}
@@ -453,7 +504,7 @@ export default function App() {
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-[11px] leading-snug text-neutral-600 text-center">
+              <p className="mt-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-400 text-center">
                 Lose if any 45° line has a coin v with count(≤ v) &gt; v.
                 <br />
                 Winner scores sum of violating coins.

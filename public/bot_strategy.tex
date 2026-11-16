@@ -1,0 +1,184 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+
+\title{\textbf{LineLimit 45 Bot Architecture:\\Adversarial Search, Cooperative Completion,\\and Implicit Coordination}}
+\author{LineLimit 45 Engine Specification (v2.0.2)}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We document the exact algorithms used by the artificial players (\emph{Bots}) in \textbf{LineLimit 45} across both \textbf{Adversarial} (\texttt{ADV}) and \textbf{Cooperative} (\texttt{CO-OP}) modes. Both modes share a fast combinatorial core built on the \emph{Zero-Slack Lock-Floor Theorem}, a pigeonhole \emph{sublevel deficit} feasibility test, and the $D_4$ dihedral symmetries of canonical incremental $n \times n$ Latin squares $L^n$. In \texttt{ADV}, the Bot executes an iterative-deepening alpha-beta Negamax search with a transposition table and softmax tie/band sampling. In \texttt{CO-OP}, the Bot optimizes sublevel headroom and Latin uniqueness and invokes a Minimum-Remaining-Values (MRV) backtracking solver when $\le 22$ squares remain empty. Crucially, cooperative Bots \emph{do not communicate}: all coordination is stateless and emerges purely from the visible board.
+\end{abstract}
+
+\section{Game State, Legality, and Scoring}
+
+Let $n \in \{4, \dots, 12\}$ be the board dimension. The board has $n^2$ cells $(r,c) \in \{0,\dots,n-1\}^2$ and a shared multiset of $n^2$ coins containing $n$ copies of each value $v \in \{1,\dots,n\}$. Let $\mathrm{rem}[v] \in \{0,\dots,n\}$ denote the remaining supply of value $v$, and let $\mathcal{L}(r,c)$ be the set of $2$ to $4$ lines (row $r$, column $c$, and any diagonal of length $\ge 2$) passing through $(r,c)$.
+
+\begin{definition}[Line Safety and Scoring]
+A board is \emph{safe} iff for every line $L$ and every coin value $v$ appearing on $L$,
+\[
+  \mathrm{count}_L(\le v) := |\{x \in L : \mathrm{val}(x) \le v\}| \le v.
+\]
+When a move causes at least one line violation ($\mathrm{count}_L(\le v) > v$), the player who placed the violating coin loses immediately. On each violated line $L$, let
+\[
+  v_{\max}(L) := \max\{v : \mathrm{count}_L(\le v) > v\}.
+\]
+The winner's score is the sum of all distinct board coins belonging to $\bigcup_{L \text{ violated}} \{x \in L : \mathrm{val}(x) \le v_{\max}(L)\}$ (each cell counted at most once). In \texttt{CO-OP}, both players form a single team that wins iff all $n^2$ squares are filled with zero violations, and loses otherwise.
+\end{definition}
+
+\section{Shared Combinatorial Core}
+
+\subsection{Zero-Slack Lock-Floor Theorem ($O(1)$ Legality)}
+
+For each line $L$ of a currently safe board, let $f_L(v)$ be the multiplicity of coin $v$ on $L$ and $\mathrm{cum}_L(v) = \sum_{w=1}^{v} f_L(w)$.
+
+\begin{theorem}[Lock Floor]
+Define the zero-slack lock threshold of line $L$ by
+\[
+  z(L) := \max\bigl(\{0\} \cup \{v \in \{1,\dots,n\} : f_L(v) > 0 \text{ and } \mathrm{cum}_L(v) = v\}\bigr).
+\]
+Then placing coin $v$ on an empty cell $(r,c)$ keeps the board safe iff
+\[
+  v \ge F(r,c) := 1 + \max_{L \in \mathcal{L}(r,c)} z(L).
+\]
+\end{theorem}
+
+By maintaining $f_L(v)$ and $z(L)$ incrementally across moves, legality of $(r,c,v)$ is tested in $O(1)$ time and the exact count of safe moves across the entire board, $\mathrm{totalSafe}$, is computed in $O(n^2)$ time by precomputing $\mathrm{availGeq}[f] = |\{v \ge f : \mathrm{rem}[v] > 0\}|$ and summing $\mathrm{availGeq}[F(r,c)]$ over all empty cells.
+
+\subsection{Dead Squares and Sublevel Deficit}
+
+Let $v_{\mathrm{top}} = \max(\{0\} \cup \{v : \mathrm{rem}[v] > 0\})$ be the largest remaining coin value.
+\begin{itemize}[nosep]
+  \item A cell $(r,c)$ is \textbf{dead} (\texttt{KO}) if $F(r,c) > v_{\mathrm{top}}$; no remaining coin can ever be placed there safely.
+  \item For each threshold $k \in \{1,\dots,n\}$, define the remaining-coin prefix sum and available-slot prefix sum:
+  \[
+    R_{\le k} := \sum_{v=1}^{k} \mathrm{rem}[v], \qquad
+    S_{\le k} := |\{(r,c) \text{ empty} : F(r,c) \le k\}|.
+  \]
+\end{itemize}
+
+\begin{proposition}[Pigeonhole Infeasibility]
+Every safe placement of a coin $v \le k$ requires an empty cell with $F(r,c) \le k$ (and future placements can only raise lock floors). Therefore, if $\max_{1 \le k \le n} (R_{\le k} - S_{\le k}) > 0$, no full-board completion exists from the current position.
+\end{proposition}
+
+\subsection{$D_4$ Dihedral Incremental Latin Templates}
+
+An \emph{incremental Latin square} $L^n$ fills the $n \times n$ board with zero violations for every threshold simultaneously. The engine precomputes the canonical witness $L^n$ for each $n \ge 4$ and generates its distinct spatial symmetries under the dihedral group $D_4$ (rotations and reflections, up to $8$ templates). During move scoring, a template $T \in D_4(L^n)$ is \emph{compatible} if $T_{r,c} = \mathrm{grid}[r,c]$ on all occupied squares; moves matching at least one compatible template receive a small $+6$ tie-breaking/ordering bonus.
+
+\section{Loss Minimization Fallback}
+
+At the start of \texttt{chooseBotMove}, if $\mathrm{safeMoves} = \emptyset$ (every remaining placement loses immediately), the Bot enumerates all legal moves and deterministically picks the move minimizing $\mathrm{totalWinningsIfLost}$---thus conceding the smallest possible score in \texttt{ADV} or penalty in \texttt{CO-OP}.
+
+\section{Adversarial Mode (\texttt{ADV}) Strategy}
+
+When safe moves exist and $\text{rule} = \texttt{adv}$, the Bot runs an iterative-deepening Alpha-Beta Negamax search with budget $T = 95\,\mathrm{ms}$, node cap $60{,}000$, internal beam width $36$, and root beam width $72$:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Immediate 1-Ply Win Check}: Before deeper search, every safe move is tested for $\mathrm{oppSafe} = 0$. If any move leaves the opponent with zero safe moves, it is immediately flagged as a forced win ($+100{,}000$).
+  \item \textbf{Root Heuristic Ordering}: Candidates $(r,c,v)$ are sorted by
+  \[
+    \mathrm{order}(r,c,v) = -4\,\mathrm{oppSafe} + 3\,|\mathcal{L}(r,c)| - 0.5\,d_{\text{center}} + 4\,\mathbf{1}_{v = F(r,c)} + 3\,\mathbf{1}_{v \le 2} + 6\,\mathbf{1}_{\text{Latin}} + \varepsilon,
+  \]
+  where $d_{\text{center}} = |r - \frac{n-1}{2}| + |c - \frac{n-1}{2}|$ and $\varepsilon$ is uniform random jitter ($\pm 3.75$ for $\text{plies} < 6$, $\pm 1.75$ afterward) to prevent predictable openings.
+  \item \textbf{Alpha-Beta Negamax \& Transposition Table}: Searches up to depth $\min(\text{empties}, 24)$, caching up to $120{,}000$ grid states with \texttt{EXACT}, \texttt{LOWER}, and \texttt{UPPER} bounds. Proven terminal wins/losses encode distance-to-mate via $\pm(100{,}000 - \mathrm{ply})$, preferring quicker wins and slower losses.
+  \item \textbf{Leaf Evaluation}: At depth $0$, non-terminal leaves are evaluated from the side-to-move perspective via:
+  \[
+    V = 1.4\,\min(\mathrm{totalSafe}, 250) + B_{\text{parity}} + 2.5\,\mathrm{criticalTightness} - 0.5\,\mathrm{deadCells} + 0.15\,\mathrm{tightnessSum},
+  \]
+  where $\mathrm{effectivePlayable} = \min(\mathrm{playableCells}, \mathrm{totalCoinsLeft} - \max_k(R_{\le k} - S_{\le k}))$ estimates remaining safe plies and grants a parity bonus ($B_{\text{parity}} = +18$ if odd, $-14$ if even).
+  \item \textbf{Non-Transparent Move Selection}: From the deepest completed iteration:
+  \begin{itemize}[nosep]
+    \item If forced wins exist ($\mathrm{score} > 90{,}000$), sample uniformly among winners within $2$ points of the fastest win.
+    \item Otherwise, discard proven losing moves when non-losing alternatives exist, retain up to $8$ candidates within $14$ points of $\mathrm{bestScore}$, and sample with Boltzmann/softmax weights $w_i = \exp\bigl((\mathrm{score}_i - \mathrm{bestScore}) / 5\bigr)$.
+  \end{itemize}
+\end{enumerate}
+
+\section{Cooperative Mode (\texttt{CO-OP}) Strategy}
+
+When $\text{rule} = \texttt{coop}$, the Bot abandons adversarial mobility-crushing and instead maximizes joint survival toward a full board:
+
+\subsection{Cooperative Health Heuristic}
+
+Every safe move $(r,c,v)$ is pushed and evaluated via \texttt{evaluateCoopHealth}:
+\[
+  S_{\text{coop}}(r,c,v) =
+  \begin{cases}
+    +1{,}000{,}000, & \text{if } \mathrm{emptiesAfter} = 0 \text{ (team win)}, \\
+    -900{,}000, & \text{if } \mathrm{totalSafe} = 0 \text{ (team loss)}, \\
+    H_{\text{coop}} + \eta, & \text{otherwise},
+  \end{cases}
+\]
+where
+\begin{align*}
+  H_{\text{coop}} &= -\mathbf{1}_{\mathrm{dead}>0}(50{,}000 + 4{,}000\,\mathrm{dead}) - \mathbf{1}_{\mathrm{maxDef}>0}(40{,}000 + 3{,}500\,\mathrm{maxDef}) \\
+  &\quad - 35\,\mathbf{1}_{\mathrm{rowDup}} - 35\,\mathbf{1}_{\mathrm{colDup}} + 10\,\min(\mathrm{minHeadroom}, 8) + 0.25\,\min(\mathrm{totalSafe}, 250) \\
+  &\quad + 2\,\mathbf{1}_{v = F(r,c) \land \mathrm{minHeadroom} \ge 2} + 6\,\mathbf{1}_{\text{Latin}},
+\end{align*}
+with $\mathrm{minHeadroom} = \min_{k: R_{\le k} > 0}(S_{\le k} - R_{\le k})$ and jitter $\eta \sim \mathrm{Uniform}(-7, 7)$ on healthy ($\mathrm{dead} = \mathrm{maxDef} = 0$) states. Penalizing row/column duplicates ($-35$) steers play toward Latin-square structures without locking into a single rigid square.
+
+\subsection{MRV Full-Board Completion Solver}
+
+When $\mathrm{emptyCount} \le 22$, the Bot invokes an exact backtracking feasibility check (\texttt{canCompleteCoopBoard}) on up to the top $24$ healthy candidates within a shared $85\,\mathrm{ms}$ budget ($22\,\mathrm{ms}$ and $4{,}000$ nodes per candidate):
+\begin{enumerate}[nosep]
+  \item At each recursive node, compute $F(r,c)$ for all empty squares and check both $\mathrm{deadCells} = 0$ and $\forall k,\; R_{\le k} \le S_{\le k}$, pruning immediately on failure.
+  \item Select the empty square with \textbf{Minimum Remaining Values (MRV)}---the fewest safe available coin values $v \ge F(r,c)$ with $\mathrm{rem}[v] > 0$.
+  \item Branch on valid coins ordered by row/column uniqueness ($-20$ per duplicate), smaller value preference, and small random jitter ($\pm 1.5$) to discover varied completion paths.
+\end{enumerate}
+Any candidate confirmed to admit a full-board completion receives a $+500{,}000$ bonus. Finally, to keep games non-repetitive, the Bot selects uniformly at random from up to $8$ candidates within a top score band ($50$ points when proven completable, $12$ points otherwise).
+
+\section{Do Co-op Bots Communicate?}
+
+\textbf{No.} In \texttt{BOT \& BOT} (and \texttt{P \& BOT} / \texttt{BOT \& P}), Bots are completely stateless across turns:
+\begin{itemize}[nosep]
+  \item On every turn, \texttt{App.tsx} calls \texttt{chooseBotMove(board, \{ rule: 'coop', varyPlay: true \})} passing \emph{only} the current visible board.
+  \item No hidden plan, selected $D_4$ Latin template, move history, or private message is stored between calls or shared between Bot 1 and Bot 2.
+  \item Coordination arises purely through \emph{stigmergy} (reading the shared board): Bot 1 creates clean, high-headroom, Latin-compatible constraints; Bot 2 reads the resulting lock floors and sublevel counts and selects a complementary move. In the endgame ($\le 22$ empty cells), both independently verify full-board completability via MRV search.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Aspect} & \textbf{Adversarial (\texttt{ADV})} & \textbf{Cooperative (\texttt{CO-OP})} \\
+\midrule
+Objective & Leave opponent with $0$ safe moves & Reach $0$ empty cells safely \\
+Core Algorithm & Iterative Alpha-Beta Negamax + TT & 1-ply Health + MRV Completion DFS \\
+Dead Cells (\texttt{KO}) & Created/exploited as traps & Strictly penalized ($-50{,}000+$) \\
+Sublevel Deficit & Used to estimate playable ply parity & Strictly pruned ($R_{\le k} > S_{\le k}$) \\
+Row/Col Duplicates & Allowed if tactically strong & Penalized ($-35$) to preserve Latin fit \\
+Search Budget & $95\,\mathrm{ms}$, $60{,}000$ nodes, depth $\le 24$ & $85\,\mathrm{ms}$ total, $4{,}000$ nodes/cand ($\le 22$ empty) \\
+Bot Communication & None (stateless) & None (stateless; shared board only) \\
+Move Diversity & Opening jitter + softmax ($\tau = 5$) & Healthy jitter + uniform top-band pick \\
+\bottomrule
+\end{tabular}
+\caption{Summary comparison of \texttt{ADV} and \texttt{CO-OP} Bot decision pipelines.}
+\end{table}
+
+\end{document}

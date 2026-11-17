@@ -115,12 +115,13 @@ export const HelpModal: React.FC<HelpModalProps> = ({
           </div>
 
           <div>
-            <p className="font-bold text-black dark:text-white">HINTS</p>
+            <p className="font-bold text-black dark:text-white">HINTS / DOT •</p>
             <p className="mt-0.5">
-              <strong>HINTS</strong> shows each cell&apos;s <strong>minimum safe coin</strong> (or{' '}
-              <strong>KO</strong> if dead) top-left, <strong>OK</strong> / <strong>-pts</strong> for
-              your selected coin bottom-right, and a <strong>center dot</strong> in the suggested
-              best cell (with a matching dot on its coin).
+              Clicking <strong>HINTS</strong> cycles: <strong>off</strong> →{' '}
+              <strong>cell hints</strong> (<strong>minimum safe coin</strong> or{' '}
+              <strong>KO</strong> top-left, <strong>OK</strong> / <strong>-pts</strong> for your
+              selected coin bottom-right) → <strong>DOT •</strong> (a <strong>center dot</strong>{' '}
+              on a suggested cell with a matching dot on its coin) → <strong>off</strong>.
             </p>
           </div>
         </div>

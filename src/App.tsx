@@ -47,7 +47,7 @@ export default function App() {
   const [selectedCoin, setSelectedCoin] = useState<number | null>(1);
   const [moves, setMoves] = useState<MoveRecord[]>([]);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
-  const [showSafetyHints, setShowSafetyHints] = useState<boolean>(false);
+  const [hintMode, setHintMode] = useState<'none' | 'hints' | 'dot'>('none');
   const [hintSeed, setHintSeed] = useState<number>(0);
   const [showHelp, setShowHelp] = useState<boolean>(false);
   const [isBotThinking, setIsBotThinking] = useState<boolean>(false);
@@ -82,10 +82,10 @@ export default function App() {
     [rule, evaluation.isGameOver, board],
   );
   const bestHintMove = useMemo(() => {
-    if (!showSafetyHints || evaluation.isGameOver || evaluation.isBoardFull) return null;
+    if (hintMode !== 'dot' || evaluation.isGameOver || evaluation.isBoardFull) return null;
     void hintSeed;
     return getBestHintMove(board, rule, 45);
-  }, [showSafetyHints, evaluation.isGameOver, evaluation.isBoardFull, board, rule, hintSeed]);
+  }, [hintMode, evaluation.isGameOver, evaluation.isBoardFull, board, rule, hintSeed]);
 
   const winner: PlayerId | null = useMemo(() => {
     if (!evaluation.isGameOver || moves.length === 0) return null;
@@ -608,16 +608,31 @@ export default function App() {
           </button>
           <button
             type="button"
-            onClick={() => setShowSafetyHints((s) => !s)}
-            aria-pressed={showSafetyHints}
-            title="Show min safe coin / KO and selected coin outcome per square"
+            onClick={() => {
+              if (hintMode === 'none') {
+                setHintMode('hints');
+              } else if (hintMode === 'hints') {
+                setHintSeed((s) => s + 1);
+                setHintMode('dot');
+              } else {
+                setHintMode('none');
+              }
+            }}
+            aria-pressed={hintMode !== 'none'}
+            title={
+              hintMode === 'none'
+                ? 'Cycle hints: off → cell hints → move dot'
+                : hintMode === 'hints'
+                  ? 'Cell hints active (click for move dot)'
+                  : 'Move dot active (click to hide)'
+            }
             className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
-              showSafetyHints
+              hintMode !== 'none'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
             }`}
           >
-            HINTS
+            {hintMode === 'dot' ? 'DOT •' : 'HINTS'}
           </button>
           <button
             type="button"
@@ -711,7 +726,7 @@ export default function App() {
               remainingCountForSelected={selectedCoin ? remainingCoins[selectedCoin] ?? 0 : 0}
               evaluation={evaluation}
               isTeamWin={rule === 'coop' && evaluation.isBoardFull && !evaluation.isGameOver}
-              showSafetyHints={showSafetyHints}
+              showSafetyHints={hintMode === 'hints'}
               bestHintMove={bestHintMove}
               disabled={isBotThinking || !isHumanTurn}
               lastMoveCoord={lastMoveCoord}

@@ -130,7 +130,6 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               const isLastMove = lastMoveCoord?.r === r && lastMoveCoord?.c === c;
               const safety = cellSafetyMap.get(key);
               const isBestHintCell =
-                showSafetyHints &&
                 !evaluation.isGameOver &&
                 bestHintMove !== null &&
                 bestHintMove.r === r &&

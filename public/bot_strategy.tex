@@ -134,9 +134,9 @@ When $\mathrm{emptyCount} \le 30$, shuffled healthy candidates (up to $28$) are 
 
 \textbf{Do Co-op Bots Communicate?} \textbf{No.} Both \texttt{ADV} and \texttt{CO-OP} Bots are completely stateless functions of the visible board alone; no target Latin square, history, or hidden message is ever stored or passed between turns.
 
-\section{Varied Best-Move Hint (\texttt{HINTS})}
+\section{Varied Best-Move Hint (\texttt{HINTS} $\to$ \texttt{DOT})}
 
-When \texttt{HINTS} is toggled on, \texttt{getBestHintMove(board, rule)} runs the same varied \texttt{ADV} or \texttt{CO-OP} selection pipeline (\texttt{varyPlay: true}, $45\,\mathrm{ms}$ budget) once per board state / new game to select a strong, non-repetitive suggested move $(r^\star, c^\star, v^\star)$, rendered minimally as a centered monochrome dot inside cell $(r^\star, c^\star)$ and a matching corner dot on coin button $[v^\star]$.
+Clicking the \texttt{HINTS} gadget cycles through three display states: \emph{off} $\to$ \emph{cell safety hints} $\to$ \emph{best-move dot} (\texttt{DOT~$\bullet$}) $\to$ \emph{off}. In the \texttt{DOT~$\bullet$} state, \texttt{getBestHintMove(board, rule)} runs the varied \texttt{ADV} or \texttt{CO-OP} selection pipeline (\texttt{varyPlay: true}, $45\,\mathrm{ms}$ budget) once per board state / cycle to select a strong, non-repetitive suggested move $(r^\star, c^\star, v^\star)$, rendered minimally as a centered monochrome dot inside cell $(r^\star, c^\star)$ and a matching corner dot on coin button $[v^\star]$.
 
 \begin{table}[h]
 \centering

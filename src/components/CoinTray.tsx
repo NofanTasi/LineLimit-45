@@ -24,8 +24,8 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
   return (
     <div className="w-full mt-3 font-mono">
       <div className="flex items-center justify-between mb-1.5 text-[11px] text-neutral-600 dark:text-neutral-400">
-        <span>COINS (1–{n})</span>
-        <span className="tabular-nums">
+        <span title="Shared pool of coins (keyboard shortcut: 1–9, 0 for 10)">COINS (1–{n})</span>
+        <span className="tabular-nums" title="Remaining coins left in the shared pool">
           {Object.values(remainingCoins).reduce((a, b) => a + b, 0)}/{n * n} LEFT
         </span>
       </div>
@@ -45,6 +45,11 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
                   disabled={disabled || isEmpty}
                   onClick={() => onSelectCoin(val)}
                   aria-pressed={isSelected}
+                  title={
+                    isEmpty
+                      ? `No [${val}] coins left`
+                      : `Select coin [${val}] (${count} remaining)`
+                  }
                   style={{ width: buttonWidth }}
                   className={`flex items-center justify-center border py-2 px-1 transition-colors min-h-[38px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
                     isEmpty

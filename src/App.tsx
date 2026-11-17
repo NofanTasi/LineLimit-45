@@ -331,6 +331,7 @@ export default function App() {
               type="button"
               onClick={() => stepZoom(-0.1)}
               aria-label="Zoom out"
+              title="Zoom out"
               className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-900 border-r border-black dark:border-white whitespace-nowrap shrink-0"
             >
               -
@@ -351,6 +352,7 @@ export default function App() {
               type="button"
               onClick={() => stepZoom(0.1)}
               aria-label="Zoom in"
+              title="Zoom in"
               className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
             >
               +
@@ -376,6 +378,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => startNewGame(n, mode)}
+            title="Start a new game"
             className="border border-black bg-black px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
           >
             NEW
@@ -386,7 +389,10 @@ export default function App() {
       {/* Minimal Controls Strip */}
       <div className="shrink-0 border-b border-black/20 bg-neutral-50 dark:border-white/25 dark:bg-neutral-950 px-4 py-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
         {/* Size list selector (4 to 12) */}
-        <label className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1">
+        <label
+          title="Choose board size (4×4 to 12×12)"
+          className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1"
+        >
           <span className="font-semibold text-neutral-600 dark:text-neutral-400">SIZE</span>
           <select
             aria-label="Board size"
@@ -444,6 +450,7 @@ export default function App() {
         <div className="flex items-center border border-black bg-white dark:border-white dark:bg-black">
           <button
             type="button"
+            title={rule === 'coop' ? 'Two human players cooperate' : 'Two human players compete'}
             onClick={() => startNewGame(n, 'pvp', rule)}
             className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'pvp'
@@ -455,6 +462,11 @@ export default function App() {
           </button>
           <button
             type="button"
+            title={
+              rule === 'coop'
+                ? 'You play first (White) with Bot partner (Black)'
+                : 'You play first (White) against Bot (Black)'
+            }
             onClick={() => startNewGame(n, 'pvbot', rule)}
             className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'pvbot'
@@ -466,6 +478,11 @@ export default function App() {
           </button>
           <button
             type="button"
+            title={
+              rule === 'coop'
+                ? 'Bot plays first (White) with you as partner (Black)'
+                : 'Bot plays first (White) against you (Black)'
+            }
             onClick={() => startNewGame(n, 'botvp', rule)}
             className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
               mode === 'botvp'
@@ -477,6 +494,11 @@ export default function App() {
           </button>
           <button
             type="button"
+            title={
+              rule === 'coop'
+                ? 'Watch two Bots cooperate to fill the board'
+                : 'Watch two Bots compete automatically'
+            }
             onClick={() => startNewGame(n, 'botvbot', rule)}
             className={`px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
               mode === 'botvbot'
@@ -496,6 +518,7 @@ export default function App() {
               disabled={evaluation.isGameOver || evaluation.isBoardFull}
               onClick={() => setIsAutoPlaying((p) => !p)}
               aria-pressed={isAutoPlaying}
+              title={isAutoPlaying ? 'Pause automatic Bot moves' : 'Resume automatic Bot moves'}
               className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 disabled:opacity-35 disabled:cursor-not-allowed ${
                 isAutoPlaying
                   ? 'bg-black text-white dark:bg-white dark:text-black'
@@ -505,7 +528,10 @@ export default function App() {
               {isAutoPlaying ? 'PAUSE' : 'PLAY'}
             </button>
 
-            <label className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1">
+            <label
+              title="Time delay between Bot moves"
+              className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1"
+            >
               <span className="font-semibold text-neutral-600 dark:text-neutral-400">SPEED</span>
               <select
                 aria-label="Bot move speed"
@@ -567,6 +593,7 @@ export default function App() {
             type="button"
             onClick={handleUndo}
             disabled={!canUndo}
+            title="Take back the last turn"
             className="border border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
           >
             UNDO
@@ -575,6 +602,7 @@ export default function App() {
             type="button"
             onClick={() => setShowSafetyHints((s) => !s)}
             aria-pressed={showSafetyHints}
+            title="Show min safe coin / KO and selected coin outcome per square"
             className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
               showSafetyHints
                 ? 'bg-black text-white dark:bg-white dark:text-black'
@@ -587,6 +615,7 @@ export default function App() {
             type="button"
             onClick={() => setShowHelp(true)}
             aria-haspopup="dialog"
+            title="How to play the current mode"
             className="border border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
           >
             HELP
@@ -627,6 +656,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => startNewGame(n, mode, rule)}
+                    title="Start a new game"
                     className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
                   >
                     AGAIN
@@ -640,6 +670,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => startNewGame(n, mode, rule)}
+                    title="Start a new game"
                     className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white dark:border-white dark:bg-white dark:text-black whitespace-nowrap shrink-0"
                   >
                     AGAIN
@@ -647,14 +678,17 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <span className="font-bold">
+                  <span className="font-bold" title="Active player to place a coin">
                     {isBotThinking
                       ? 'BOT THINKING…'
                       : mode === 'botvbot' && !isAutoPlaying
                         ? `PAUSED · ${playerText(currentPlayer)}`
                         : `TURN: ${playerText(currentPlayer)}`}
                   </span>
-                  <span className="text-neutral-600 dark:text-neutral-400 tabular-nums">
+                  <span
+                    className="text-neutral-600 dark:text-neutral-400 tabular-nums"
+                    title="Current turn number and total safe (square, coin) moves available"
+                  >
                     PLY {moves.length + 1} · {safeMoves.length} SAFE
                     {rule === 'coop' && deadCellCount > 0 ? ` · ${deadCellCount} KO` : ''}
                   </span>

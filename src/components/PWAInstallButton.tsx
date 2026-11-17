@@ -14,6 +14,7 @@ export const PWAInstallButton: React.FC = () => {
       <button
         type="button"
         onClick={() => void install()}
+        title="Install app on this device"
         className="border border-black bg-white px-2.5 py-1 text-xs font-semibold text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
       >
         INSTALL
@@ -27,6 +28,7 @@ export const PWAInstallButton: React.FC = () => {
         <button
           type="button"
           onClick={() => setShowIOSGuide(true)}
+          title="Install app on this device"
           className="border border-black bg-white px-2.5 py-1 text-xs font-semibold text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
         >
           INSTALL

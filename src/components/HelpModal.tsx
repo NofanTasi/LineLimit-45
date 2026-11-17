@@ -118,8 +118,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({
             <p className="font-bold text-black dark:text-white">HINTS</p>
             <p className="mt-0.5">
               <strong>HINTS</strong> shows each cell&apos;s <strong>minimum safe coin</strong> (or{' '}
-              <strong>KO</strong> if dead) top-left, and <strong>OK</strong> /{' '}
-              <strong>-pts</strong> for your selected coin bottom-right.
+              <strong>KO</strong> if dead) top-left, <strong>OK</strong> / <strong>-pts</strong> for
+              your selected coin bottom-right, and a <strong>center dot</strong> in the suggested
+              best cell (with a matching dot on its coin).
             </p>
           </div>
         </div>

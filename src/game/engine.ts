@@ -929,43 +929,149 @@ export function getAllSafeAndLosingMoves(board: BoardState): {
   return { safeMoves, losingMoves };
 }
 
+const WIN_SCORE = 100000;
+const WIN_THRESHOLD = 90000;
+
+/**
+ * Theorem 1 (Draw <=> Incremental Latin Square):
+ * Any full n x n board with zero line violations must be an incremental Latin square.
+ * Consequently, if any row or column contains two equal coins (even two n's!), or on 4x4
+ * if coin 1 is placed on a corner or center square, zero full-board Draws remain reachable.
+ */
+function hasRowColOr4x4DrawDeath(ctx: FastEngineContext): boolean {
+  const { n, stride, lineFreq, grid } = ctx;
+  for (let l = 0; l < 2 * n; l++) {
+    const base = l * stride;
+    for (let v = 1; v <= n; v++) {
+      if (lineFreq[base + v] > 1) return true;
+    }
+  }
+  if (n === 4) {
+    if (
+      grid[0] === 1 ||
+      grid[3] === 1 ||
+      grid[12] === 1 ||
+      grid[15] === 1 ||
+      grid[5] === 1 ||
+      grid[6] === 1 ||
+      grid[9] === 1 ||
+      grid[10] === 1
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if only the largest remaining coin `maxRem` can ever be legally played from `ctx`
+ * AND placing `maxRem` can never lock another playable square.
+ * When true, returns the exact remaining safe plies M = min(playableCells, remaining[maxRem]),
+ * or -1 if the board is not yet ceiling-frozen.
+ */
+function getFrozenCeilingPlies(
+  ctx: FastEngineContext,
+  maxRem: number,
+  secondRem: number,
+  playableCells: number,
+  minPlayableFloor: number,
+): number {
+  if (playableCells <= 0 || secondRem >= minPlayableFloor) return -1;
+
+  // Case A: maxRem === n (Zero-Splash Theorem: coin n never raises any non-full line's lock floor)
+  if (maxRem === ctx.n) {
+    return Math.min(playableCells, ctx.remaining[maxRem]);
+  }
+
+  // Case B: maxRem < n — verify no line with >= 2 playable cells can cascade at w in [maxRem..n-1]
+  const { n, stride, lineCount, lineFreq, grid, cellLines } = ctx;
+  const remMax = ctx.remaining[maxRem];
+  const playableOnLine = new Uint8Array(lineCount);
+  for (let idx = 0; idx < n * n; idx++) {
+    if (grid[idx] !== 0) continue;
+    if (getCellMinCoin(ctx, idx) <= maxRem) {
+      const ls = cellLines[idx];
+      for (let i = 0; i < ls.length; i++) playableOnLine[ls[i]]++;
+    }
+  }
+
+  for (let l = 0; l < lineCount; l++) {
+    const pL = playableOnLine[l];
+    if (pL < 2) continue;
+    const maxAddedKeepOneEmpty = Math.min(pL - 1, remMax);
+    const base = l * stride;
+    let cum = 0;
+    for (let w = 1; w < n; w++) {
+      const f = lineFreq[base + w];
+      cum += f;
+      if (w >= maxRem && (w === maxRem || f > 0)) {
+        if (cum + maxAddedKeepOneEmpty >= w) return -1;
+      }
+    }
+  }
+
+  return Math.min(playableCells, remMax);
+}
+
 /**
  * Paper-grounded leaf evaluation from the perspective of `sideToMove`:
- * - Exact dead squares: cells whose lock floor F(r,c) > maxRemainingCoin.
- * - Sublevel deficit (Lemma B.1 + Theorem 1.2): R_{<=k} > S_{<=k} proves no full-board draw exists.
- * - Playable-square parity & trap pressure: odd playable slots favor the player to move when
- *   squares decouple; low opponent safe mobility creates forcing bottlenecks.
+ * - Exact Ceiling-Frozen Endgame resolution in O(n^2).
+ * - Theorem 1 Draw-death shift (row/col duplicate guarantees at least 1 dead square).
+ * - [v_max] x1 Trapdoor Cliff parity awareness (K_cliff squares kept alive solely by maxRem).
+ * - Phase-scaled playable-square parity & sublevel bottleneck tightness.
  */
 function evaluateLeafForSideToMove(ctx: FastEngineContext): number {
   const { n, remaining, grid } = ctx;
-  const totalSafe = countTotalSafeMovesFast(ctx);
-  if (totalSafe === 0) return -90000;
 
   let maxRem = 0;
+  let secondRem = 0;
   let totalCoinsLeft = 0;
   const remLeq = new Int16Array(n + 1);
+  const availGeq = new Uint8Array(n + 2);
+  let runningDistinct = 0;
+
   for (let v = 1; v <= n; v++) {
     totalCoinsLeft += remaining[v];
     remLeq[v] = totalCoinsLeft;
-    if (remaining[v] > 0) maxRem = v;
+    if (remaining[v] > 0) {
+      secondRem = maxRem;
+      maxRem = v;
+    }
   }
+  for (let v = n; v >= 1; v--) {
+    if (remaining[v] > 0) runningDistinct++;
+    availGeq[v] = runningDistinct;
+  }
+  availGeq[n + 1] = 0;
 
-  // Count empty cells at each lock floor F(r, c)
   const floorBuckets = new Int16Array(n + 2);
   let deadCells = 0;
   let playableCells = 0;
+  let minPlayableFloor = n + 1;
   let tightnessSum = 0;
+  let totalSafe = 0;
 
   for (let idx = 0; idx < n * n; idx++) {
     if (grid[idx] !== 0) continue;
     const f = getCellMinCoin(ctx, idx);
     floorBuckets[f]++;
+    totalSafe += availGeq[f];
     if (f > maxRem) {
       deadCells++;
     } else {
       playableCells++;
+      if (f < minPlayableFloor) minPlayableFloor = f;
       tightnessSum += f - 1;
     }
+  }
+
+  if (totalSafe === 0) return -90000;
+
+  // Exact Ceiling-Frozen Tablebase check
+  const frozenPlies = getFrozenCeilingPlies(ctx, maxRem, secondRem, playableCells, minPlayableFloor);
+  if (frozenPlies >= 0) {
+    if (frozenPlies === ctx.emptyCount) return 0;
+    return frozenPlies % 2 === 1 ? 88000 - frozenPlies : -88000 + frozenPlies;
   }
 
   // Compute max sublevel deficit max_k (R_{<=k} - S_{<=k})
@@ -982,22 +1088,54 @@ function evaluateLeafForSideToMove(ctx: FastEngineContext): number {
     }
   }
 
-  // Effective upper bound on remaining safe plies
-  const effectivePlayable = Math.min(playableCells, totalCoinsLeft - maxDeficit);
-  const parityBonus = effectivePlayable > 0 ? (effectivePlayable % 2 === 1 ? 18 : -14) : -40;
+  const drawsDead = deadCells > 0 || maxDeficit > 0 || hasRowColOr4x4DrawDeath(ctx);
+  let effectivePlayable = Math.min(playableCells, totalCoinsLeft - maxDeficit);
+  if (drawsDead && effectivePlayable === ctx.emptyCount) {
+    // Theorem 1: full board is already unreachable, so at least 1 cell must die
+    effectivePlayable = Math.max(1, effectivePlayable - 1);
+  }
 
-  // Favor high mobility + small parity/structural control for sideToMove
+  // [v_max] x1 Trapdoor Cliff: squares in (secondRem, maxRem] die the instant maxRem runs out
+  let cliffCells = 0;
+  for (let f = secondRem + 1; f <= maxRem; f++) {
+    cliffCells += floorBuckets[f];
+  }
+  let trapdoorBonus = 0;
+  const remTop = remaining[maxRem];
+  if (cliffCells > 0 && cliffCells % 2 === 1) {
+    if (remTop === 1 && secondRem >= minPlayableFloor) {
+      // sideToMove can choose between -1 and -(1 + cliffCells) — opposite parities!
+      trapdoorBonus = 24;
+    } else if (remTop === 2) {
+      // Spending maxRem hands the x1 parity-choice lever to the opponent
+      trapdoorBonus = -10;
+    }
+  }
+
+  const highFloorCells = floorBuckets[maxRem] + (maxRem > 1 ? floorBuckets[maxRem - 1] : 0);
+  const frozenRatio = playableCells > 0 ? highFloorCells / playableCells : 0;
+
+  let parityBonus = 0;
+  if (!drawsDead && effectivePlayable === ctx.emptyCount) {
+    parityBonus = effectivePlayable % 2 === 1 ? 6 : 0;
+  } else if (effectivePlayable > 0) {
+    const parityWeight = 20 + Math.round(frozenRatio * 45);
+    parityBonus = effectivePlayable % 2 === 1 ? parityWeight : -parityWeight;
+  } else {
+    parityBonus = -45;
+  }
+
+  const mobilityWeight = 1.35 * (1 - frozenRatio * 0.55);
+
   return (
-    Math.min(totalSafe, 250) * 1.4 +
+    Math.min(totalSafe, 250) * mobilityWeight +
     parityBonus +
+    trapdoorBonus +
     criticalTightness * 2.5 -
     deadCells * 0.5 +
     tightnessSum * 0.15
   );
 }
-
-const WIN_SCORE = 100000;
-const WIN_THRESHOLD = 90000;
 
 const enum TTFlag {
   EXACT = 0,
@@ -1023,6 +1161,16 @@ interface SearchCandidate {
   minMargin: number;
 }
 
+function shuffleInPlace<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
 function generateOrderedCandidates(
   ctx: FastEngineContext,
   latinTemplates: number[][][],
@@ -1033,19 +1181,55 @@ function generateOrderedCandidates(
   const candidates: SearchCandidate[] = [];
   const prevFloors = [0, 0, 0, 0];
   const center = (n - 1) / 2;
+  const pliesPlayed = n * n - ctx.emptyCount;
+  const isStarter = pliesPlayed % 2 === 0;
+
+  let maxRem = 0;
+  let secondRem = 0;
+  for (let v = 1; v <= n; v++) {
+    if (remaining[v] > 0) {
+      secondRem = maxRem;
+      maxRem = v;
+    }
+  }
+
+  let playableBefore = 0;
+  let deadBefore = 0;
+  let cliffCells = 0;
+  for (let idx = 0; idx < n * n; idx++) {
+    if (grid[idx] !== 0) continue;
+    const f = getCellMinCoin(ctx, idx);
+    if (f > maxRem) {
+      deadBefore++;
+    } else {
+      playableBefore++;
+      if (f > secondRem) cliffCells++;
+    }
+  }
+
+  const drawsDeadBefore = deadBefore > 0 || hasRowColOr4x4DrawDeath(ctx);
 
   // Check which D4 symmetries of L^n are still completely consistent with current board
-  const compatibleTemplates = preferLatinBonus
-    ? latinTemplates.filter((tpl) => {
-        for (let r = 0; r < n; r++) {
-          for (let c = 0; c < n; c++) {
-            const g = grid[r * n + c];
-            if (g !== 0 && tpl[r][c] !== g) return false;
+  const compatibleTemplates =
+    preferLatinBonus && !drawsDeadBefore
+      ? latinTemplates.filter((tpl) => {
+          for (let r = 0; r < n; r++) {
+            for (let c = 0; c < n; c++) {
+              const g = grid[r * n + c];
+              if (g !== 0 && tpl[r][c] !== g) return false;
+            }
           }
-        }
-        return true;
-      })
-    : [];
+          return true;
+        })
+      : [];
+
+  // When varying play, pick a single random compatible template (if any) instead of stacking
+  const chosenTemplate =
+    compatibleTemplates.length > 0
+      ? jitterScale > 0
+        ? [compatibleTemplates[Math.floor(Math.random() * compatibleTemplates.length)]]
+        : compatibleTemplates
+      : [];
 
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
@@ -1055,6 +1239,8 @@ function generateOrderedCandidates(
       const ls = ctx.cellLines[idx];
       const lineWeight = ls.length; // 4 lines in interior, 3 on edges/main diags
       const centerDist = Math.abs(r - center) + Math.abs(c - center);
+      const symVal = grid[(n - 1 - r) * n + (n - 1 - c)];
+      const onMainX = r === c || r + c === n - 1;
 
       for (let v = 1; v <= n; v++) {
         if (remaining[v] <= 0 || v < minCoin) continue;
@@ -1065,15 +1251,36 @@ function generateOrderedCandidates(
 
         // Quick heuristic ordering score
         let orderScore = oppSafe === 0 ? WIN_SCORE : -oppSafe * 4;
-        orderScore += lineWeight * 3 - centerDist * 0.5;
-        // Slightly prefer spending smaller coins when they tightly lock lines
-        if (v === minCoin) orderScore += 4;
-        if (v <= 2) orderScore += 3;
+        orderScore += lineWeight * 2.5 - centerDist * 0.4;
+        // Prefer spending smaller coins when they tightly lock lines
+        if (v === minCoin) orderScore += 3.5;
+        if (v <= 2) orderScore += 2.5;
 
-        if (compatibleTemplates.length > 0) {
-          for (let t = 0; t < compatibleTemplates.length; t++) {
-            if (compatibleTemplates[t][r][c] === v) {
-              orderScore += 6;
+        // Coin n Zero-Splash: clean high-floor placement preserves low-floor shelters
+        if (v === n && minCoin === n) orderScore += 5;
+
+        // [v_max] x1 Trapdoor Cliff parity guard
+        if (oppSafe > 0 && v === maxRem && remaining[v] === 1 && cliffCells > 0) {
+          const oppPlayableApprox =
+            playableBefore - 1 - (minCoin > secondRem ? cliffCells - 1 : cliffCells);
+          orderScore += oppPlayableApprox % 2 === 0 ? 10 : -8;
+        }
+
+        // Gentle opening & 180-degree mirror nudges (soft enough to keep wide opening variety)
+        if (pliesPlayed === 0) {
+          if (n % 2 === 1 && r === center && c === center && v <= 2) {
+            orderScore += 5;
+          } else if (n % 2 === 0 && onMainX && v <= 2) {
+            orderScore += 4.5;
+          }
+        } else if (n % 2 === 0 && !isStarter && symVal === v && remaining[v] % 2 === 1) {
+          orderScore += 7;
+        }
+
+        if (chosenTemplate.length > 0) {
+          for (let t = 0; t < chosenTemplate.length; t++) {
+            if (chosenTemplate[t][r][c] === v) {
+              orderScore += 4;
               break;
             }
           }
@@ -1096,6 +1303,9 @@ function generateOrderedCandidates(
     }
   }
 
+  if (jitterScale > 0) {
+    shuffleInPlace(candidates);
+  }
   candidates.sort((a, b) => b.score - a.score);
   return candidates;
 }
@@ -1103,29 +1313,37 @@ function generateOrderedCandidates(
 function pickWeightedDiverseCandidate(
   scored: { cand: SearchCandidate; score: number }[],
   bestScore: number,
+  pliesPlayed: number,
 ): SearchCandidate {
   if (scored.length === 1) return scored[0].cand;
 
   if (bestScore > WIN_THRESHOLD) {
-    const winners = scored.filter((e) => e.score > WIN_THRESHOLD && bestScore - e.score <= 2);
-    if (winners.length > 0) {
-      return winners[Math.floor(Math.random() * winners.length)].cand;
+    // Pick uniformly among proven winning moves within 4 plies of fastest mate
+    const nearFastest = scored.filter((e) => e.score > WIN_THRESHOLD && bestScore - e.score <= 4);
+    const anyWinners =
+      nearFastest.length > 0 ? nearFastest : scored.filter((e) => e.score > WIN_THRESHOLD);
+    if (anyWinners.length > 0) {
+      return anyWinners[Math.floor(Math.random() * anyWinners.length)].cand;
     }
   }
 
   const nonLosing = scored.filter((e) => e.score > -WIN_THRESHOLD);
-  const poolSource = nonLosing.length > 0 ? nonLosing : scored;
-  const band = bestScore - 14;
+  const poolSource = nonLosing.length > 0 ? [...nonLosing] : [...scored];
+  shuffleInPlace(poolSource);
+
+  const spread = pliesPlayed < 6 ? 22 : pliesPlayed < 14 ? 17 : 14;
+  const temp = pliesPlayed < 6 ? 8.5 : pliesPlayed < 14 ? 6.5 : 5.0;
+  const band = bestScore - spread;
   const bandCandidates = poolSource
     .filter((e) => e.score >= band)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
+    .slice(0, 28);
 
-  if (bandCandidates.length <= 1) return scored[0].cand;
+  if (bandCandidates.length <= 1) return poolSource.sort((a, b) => b.score - a.score)[0].cand;
 
   let totalWeight = 0;
   const weights = bandCandidates.map((e) => {
-    const w = Math.exp((e.score - bestScore) / 5);
+    const w = Math.exp((e.score - bestScore) / temp);
     totalWeight += w;
     return w;
   });
@@ -1154,7 +1372,7 @@ function runIterativeAlphaBeta(
   const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const latinTemplates = getIncrementalLatinSymmetries(ctx.n);
   const pliesPlayed = ctx.n * ctx.n - ctx.emptyCount;
-  const jitterScale = varyPlay ? (pliesPlayed < 6 ? 7.5 : 3.5) : 0;
+  const jitterScale = varyPlay ? (pliesPlayed < 4 ? 16 : pliesPlayed < 10 ? 10 : 5.5) : 0;
   const rootCandidates = generateOrderedCandidates(ctx, latinTemplates, true, jitterScale);
 
   if (rootCandidates.length === 0) {
@@ -1167,11 +1385,14 @@ function runIterativeAlphaBeta(
     };
   }
 
-  // Immediate 1-move win check across ALL safe moves (zero blind spots!)
+  // Immediate 1-move win check across ALL safe moves (zero blind spots, uniform tie-break!)
   const instantWins = rootCandidates.filter((m) => m.oppSafe === 0);
   if (instantWins.length > 0) {
+    const chosenWin = varyPlay
+      ? instantWins[Math.floor(Math.random() * instantWins.length)]
+      : instantWins[0];
     return {
-      bestCandidate: instantWins[0],
+      bestCandidate: chosenWin,
       topWinningCandidates: instantWins,
       outcome: 'N',
       exact: true,
@@ -1215,23 +1436,60 @@ function runIterativeAlphaBeta(
 
     nodes++;
 
-    // Generate all safe moves using fast O(1) cell floor
+    // Generate all safe moves using fast O(1) cell floor while tracking frozen-ceiling state
     const { n, grid, remaining } = ctx;
+    let maxRem = 0;
+    let secondRem = 0;
+    for (let v = 1; v <= n; v++) {
+      if (remaining[v] > 0) {
+        secondRem = maxRem;
+        maxRem = v;
+      }
+    }
+
+    let playableCells = 0;
+    let minPlayableFloor = n + 1;
     const moves: { idx: number; v: number; order: number }[] = [];
+
     for (let idx = 0; idx < n * n; idx++) {
       if (grid[idx] !== 0) continue;
       const minCoin = getCellMinCoin(ctx, idx);
+      if (minCoin <= maxRem) {
+        playableCells++;
+        if (minCoin < minPlayableFloor) minPlayableFloor = minCoin;
+      }
       const isTT = cached && cached.bestIdx === idx;
-      for (let v = minCoin; v <= n; v++) {
+      for (let v = minCoin; v <= maxRem; v++) {
         if (remaining[v] <= 0) continue;
-        let order = (isTT && cached!.bestVal === v ? 1000 : 0) + (v === minCoin ? 6 : 0) + ctx.cellLineCount[idx];
+        let order =
+          (isTT && cached!.bestVal === v ? 1000 : 0) +
+          (v === minCoin ? 6 : 0) +
+          ctx.cellLineCount[idx];
         if (v <= 2) order += 2;
+        else if (v === n && minCoin >= n - 1) order += 3;
         moves.push({ idx, v, order });
       }
     }
 
     if (moves.length === 0) {
       return -WIN_SCORE + ply;
+    }
+
+    // Exact O(1)/O(n^2) Ceiling-Frozen Endgame Shortcut (prunes up to 24 plies of permutations!)
+    if (secondRem < minPlayableFloor) {
+      const frozenPlies = getFrozenCeilingPlies(
+        ctx,
+        maxRem,
+        secondRem,
+        playableCells,
+        minPlayableFloor,
+      );
+      if (frozenPlies >= 0) {
+        if (frozenPlies === ctx.emptyCount) return 0;
+        return frozenPlies % 2 === 1
+          ? WIN_SCORE - (ply + frozenPlies)
+          : -WIN_SCORE + (ply + frozenPlies);
+      }
     }
 
     if (depth <= 0) {
@@ -1352,7 +1610,7 @@ function runIterativeAlphaBeta(
       completedExact = true;
       break;
     }
-    if (!anyPruned && !varyPlay && iterBestScore > WIN_THRESHOLD) {
+    if (!anyPruned && !varyPlay && (iterBestScore > WIN_THRESHOLD || iterBestScore < -WIN_THRESHOLD)) {
       completedExact = true;
       break;
     }
@@ -1362,7 +1620,7 @@ function runIterativeAlphaBeta(
   }
 
   if (varyPlay && lastCompletedScored.length > 1) {
-    bestMove = pickWeightedDiverseCandidate(lastCompletedScored, bestRootScore);
+    bestMove = pickWeightedDiverseCandidate(lastCompletedScored, bestRootScore, pliesPlayed);
   }
 
   let outcome: 'N' | 'P' | 'DRAW' | 'UNKNOWN' = 'UNKNOWN';
@@ -1636,6 +1894,9 @@ function canCompleteCoopBoard(
   deadlineMs: number,
   varyOrder: boolean,
 ): boolean {
+  // Theorem 1: Any existing row/col duplicate or 4x4 forbidden-1 makes completion impossible
+  if (hasRowColOr4x4DrawDeath(ctx)) return false;
+
   let nodes = 0;
 
   function dfs(): boolean {
@@ -1668,9 +1929,22 @@ function canCompleteCoopBoard(
       floorBuckets[floor]++;
       if (floor > maxRem) return false; // Dead cell => impossible to fill
 
+      const rCell = Math.floor(idx / n);
+      const cCell = idx % n;
       let avail = 0;
       for (let v = floor; v <= n; v++) {
-        if (remaining[v] > 0) avail++;
+        if (remaining[v] <= 0) continue;
+        // Theorem 1 exact pruning: full completion MUST be a Latin square
+        if (ctx.lineFreq[rCell * ctx.stride + v] > 0) continue;
+        if (ctx.lineFreq[(n + cCell) * ctx.stride + v] > 0) continue;
+        if (
+          n === 4 &&
+          v === 1 &&
+          (idx === 0 || idx === 3 || idx === 12 || idx === 15 || idx === 5 || idx === 6 || idx === 9 || idx === 10)
+        ) {
+          continue;
+        }
+        avail++;
       }
       if (avail === 0) return false;
       if (avail < mrvCount) {
@@ -1694,10 +1968,16 @@ function canCompleteCoopBoard(
 
     for (let v = mrvFloor; v <= n; v++) {
       if (remaining[v] <= 0) continue;
-      // Prefer values not already present in row r or col c (Latin-square preservation)
-      const rowDup = ctx.lineFreq[r * ctx.stride + v] > 0;
-      const colDup = ctx.lineFreq[(n + c) * ctx.stride + v] > 0;
-      let order = (rowDup ? -20 : 0) + (colDup ? -20 : 0) - v * 0.1;
+      if (ctx.lineFreq[r * ctx.stride + v] > 0) continue;
+      if (ctx.lineFreq[(n + c) * ctx.stride + v] > 0) continue;
+      if (
+        n === 4 &&
+        v === 1 &&
+        (mrvIdx === 0 || mrvIdx === 3 || mrvIdx === 12 || mrvIdx === 15 || mrvIdx === 5 || mrvIdx === 6 || mrvIdx === 9 || mrvIdx === 10)
+      ) {
+        continue;
+      }
+      let order = -v * 0.1;
       if (varyOrder) order += (Math.random() - 0.5) * 3;
       vals.push({ v, order });
     }
@@ -1777,9 +2057,14 @@ function chooseCoopBotMove(
           if (health.deadCells > 0) score -= 50_000 + health.deadCells * 4000;
           if (health.maxDeficit > 0) score -= 40_000 + health.maxDeficit * 3500;
 
-          // Strong preference for Latin-like unique values per row and column
-          if (rowDup) score -= 35;
-          if (colDup) score -= 35;
+          // Theorem 1: Any row/col duplicate or 4x4 forbidden-1 permanently prevents completion
+          const forbidden4x4One =
+            n === 4 &&
+            v === 1 &&
+            (idx === 0 || idx === 3 || idx === 12 || idx === 15 || idx === 5 || idx === 6 || idx === 9 || idx === 10);
+          if (rowDup || colDup || forbidden4x4One) {
+            score -= 45_000;
+          }
 
           // Maximize small-coin headroom & keep safe mobility healthy
           score += Math.min(health.minHeadroom, 8) * 10;
@@ -1797,8 +2082,15 @@ function chooseCoopBotMove(
           }
         }
 
-        if (varyPlay && emptiesAfter > 0 && health.deadCells === 0 && health.maxDeficit === 0) {
-          score += (Math.random() - 0.5) * 14;
+        if (
+          varyPlay &&
+          emptiesAfter > 0 &&
+          health.deadCells === 0 &&
+          health.maxDeficit === 0 &&
+          !rowDup &&
+          !colDup
+        ) {
+          score += (Math.random() - 0.5) * 26;
         }
 
         candidates.push({
@@ -1816,28 +2108,37 @@ function chooseCoopBotMove(
 
   if (candidates.length === 0) return null;
 
+  if (varyPlay) {
+    shuffleInPlace(candidates);
+  }
   candidates.sort((a, b) => b.score - a.score);
 
-  // In late/medium cooperative states (<= 22 empty cells), verify full-board completion with MRV DFS
-  if (ctx.emptyCount <= 22) {
-    const checkCount = Math.min(candidates.length, 24);
-    const totalDeadline = start + 85;
+  // With exact Latin pruning (Theorem 1), MRV DFS easily verifies <= 30 empty cells
+  if (ctx.emptyCount <= 30) {
+    const checkCount = Math.min(candidates.length, 28);
+    const totalDeadline = start + 75;
     for (let i = 0; i < checkCount; i++) {
       const cand = candidates[i];
       if (cand.provenCompletable) continue;
-      if (cand.health.deadCells > 0 || cand.health.maxDeficit > 0 || cand.health.totalSafe === 0) {
+      if (
+        cand.health.deadCells > 0 ||
+        cand.health.maxDeficit > 0 ||
+        cand.health.totalSafe === 0 ||
+        cand.score <= -30_000
+      ) {
         continue;
       }
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
       if (now >= totalDeadline) break;
 
       pushMove(ctx, cand.idx, cand.value, prevFloors);
-      const ok = canCompleteCoopBoard(ctx, 4000, Math.min(totalDeadline, now + 22), varyPlay);
+      const ok = canCompleteCoopBoard(ctx, 5000, Math.min(totalDeadline, now + 20), varyPlay);
       popMove(ctx, cand.idx, cand.value, prevFloors);
 
       if (ok) {
         cand.provenCompletable = true;
         cand.score += 500_000;
+        if (!varyPlay) break;
       }
     }
     candidates.sort((a, b) => b.score - a.score);
@@ -1845,11 +2146,16 @@ function chooseCoopBotMove(
 
   let pick = candidates[0];
   if (varyPlay && candidates.length > 1) {
-    const topScore = candidates[0].score;
-    const band = topScore >= 400_000 ? 50 : 12;
-    const pool = candidates.filter((c) => topScore - c.score <= band).slice(0, 8);
-    if (pool.length > 1) {
-      pick = pool[Math.floor(Math.random() * pool.length)];
+    const provenPool = candidates.filter((c) => c.provenCompletable);
+    if (provenPool.length > 1) {
+      // Every proven-completable move guarantees a valid full-board win — sample uniformly across ALL of them!
+      pick = provenPool[Math.floor(Math.random() * provenPool.length)];
+    } else {
+      const topScore = candidates[0].score;
+      const pool = candidates.filter((c) => topScore - c.score <= 22);
+      if (pool.length > 1) {
+        pick = pool[Math.floor(Math.random() * pool.length)];
+      }
     }
   }
 
@@ -1865,15 +2171,23 @@ function chooseCoopBotMove(
 
 export function chooseBotMove(
   board: BoardState,
-  options?: { rule?: 'adv' | 'coop'; varyTies?: boolean; varyPlay?: boolean },
+  options?: {
+    rule?: 'adv' | 'coop';
+    varyTies?: boolean;
+    varyPlay?: boolean;
+    timeBudgetMs?: number;
+  },
 ): { r: number; c: number; value: number; reasoning: string } | null {
   const { safeMoves, losingMoves } = getAllSafeAndLosingMoves(board);
+  const varyPlay = options?.varyPlay ?? options?.varyTies ?? true;
 
-  // If forced to lose, minimize the opponent's/team's penalty!
+  // If forced to lose, minimize the opponent's/team's penalty (with uniform tie-breaking)!
   if (safeMoves.length === 0) {
     if (losingMoves.length === 0) return null;
     const sorted = [...losingMoves].sort((a, b) => a.lossWinnings - b.lossWinnings);
-    const best = sorted[0];
+    const minLoss = sorted[0].lossWinnings;
+    const minPool = varyPlay ? sorted.filter((m) => m.lossWinnings === minLoss) : [sorted[0]];
+    const best = minPool[Math.floor(Math.random() * minPool.length)];
     return {
       r: best.r,
       c: best.c,
@@ -1884,7 +2198,7 @@ export function chooseBotMove(
 
   const ctx = createFastContext(board);
   if (!ctx) {
-    const pick = safeMoves[0];
+    const pick = varyPlay ? safeMoves[Math.floor(Math.random() * safeMoves.length)] : safeMoves[0];
     return {
       r: pick.r,
       c: pick.c,
@@ -1893,7 +2207,7 @@ export function chooseBotMove(
     };
   }
 
-  const varyPlay = options?.varyPlay ?? options?.varyTies ?? true;
+  const timeBudgetMs = options?.timeBudgetMs ?? 95;
 
   if (options?.rule === 'coop') {
     const coopPick = chooseCoopBotMove(ctx, varyPlay);
@@ -1901,7 +2215,7 @@ export function chooseBotMove(
   }
 
   // Adversarial iterative deepening alpha-beta with diverse play sampling
-  const search = runIterativeAlphaBeta(ctx, 95, 60000, 36, varyPlay);
+  const search = runIterativeAlphaBeta(ctx, timeBudgetMs, 60000, 36, varyPlay);
   const pick = search.bestCandidate;
 
   if (pick) {
@@ -1912,7 +2226,7 @@ export function chooseBotMove(
       reasoning:
         search.outcome === 'N'
           ? `Forced winning line found with [${pick.value}].`
-          : `Placed [${pick.value}] using line-floor squeeze & incremental Latin compatibility.`,
+          : `Placed [${pick.value}] using line-floor squeeze & parity control.`,
     };
   }
 
@@ -1923,4 +2237,20 @@ export function chooseBotMove(
     value: fallback.value,
     reasoning: `Placed [${fallback.value}].`,
   };
+}
+
+/**
+ * Varied high-quality best-move hint for the active rule ('adv' or 'coop').
+ */
+export function getBestHintMove(
+  board: BoardState,
+  rule: 'adv' | 'coop' = 'adv',
+  timeBudgetMs = 55,
+): { r: number; c: number; value: number } | null {
+  const pick = chooseBotMove(board, {
+    rule,
+    varyPlay: true,
+    timeBudgetMs,
+  });
+  return pick ? { r: pick.r, c: pick.c, value: pick.value } : null;
 }

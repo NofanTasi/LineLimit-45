@@ -10,6 +10,7 @@ import {
   evaluateBoard,
   formatCoord,
   getAllSafeAndLosingMoves,
+  getBestHintMove,
   getRemainingCoins,
 } from './game/engine';
 import { GameBoard } from './components/GameBoard';
@@ -47,6 +48,7 @@ export default function App() {
   const [moves, setMoves] = useState<MoveRecord[]>([]);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [showSafetyHints, setShowSafetyHints] = useState<boolean>(false);
+  const [hintSeed, setHintSeed] = useState<number>(0);
   const [showHelp, setShowHelp] = useState<boolean>(false);
   const [isBotThinking, setIsBotThinking] = useState<boolean>(false);
   const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(true);
@@ -79,6 +81,11 @@ export default function App() {
     () => (rule === 'coop' && !evaluation.isGameOver ? countDeadCells(board) : 0),
     [rule, evaluation.isGameOver, board],
   );
+  const bestHintMove = useMemo(() => {
+    if (!showSafetyHints || evaluation.isGameOver || evaluation.isBoardFull) return null;
+    void hintSeed;
+    return getBestHintMove(board, rule, 45);
+  }, [showSafetyHints, evaluation.isGameOver, evaluation.isBoardFull, board, rule, hintSeed]);
 
   const winner: PlayerId | null = useMemo(() => {
     if (!evaluation.isGameOver || moves.length === 0) return null;
@@ -146,6 +153,7 @@ export default function App() {
       setSelectedCoin(1);
       setMoves([]);
       setHistory([]);
+      setHintSeed((s) => s + 1);
       if (nextMode === 'botvbot') {
         setIsAutoPlaying(true);
       }
@@ -704,6 +712,7 @@ export default function App() {
               evaluation={evaluation}
               isTeamWin={rule === 'coop' && evaluation.isBoardFull && !evaluation.isGameOver}
               showSafetyHints={showSafetyHints}
+              bestHintMove={bestHintMove}
               disabled={isBotThinking || !isHumanTurn}
               lastMoveCoord={lastMoveCoord}
               onPlaceCoin={handleBoardClick}
@@ -714,6 +723,7 @@ export default function App() {
               n={n}
               remainingCoins={remainingCoins}
               selectedCoin={selectedCoin}
+              hintedCoin={bestHintMove ? bestHintMove.value : null}
               disabled={
                 evaluation.isGameOver ||
                 evaluation.isBoardFull ||

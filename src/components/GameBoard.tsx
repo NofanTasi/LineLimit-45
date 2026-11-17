@@ -13,6 +13,7 @@ interface GameBoardProps {
   evaluation: BoardEvaluation;
   isTeamWin?: boolean;
   showSafetyHints: boolean;
+  bestHintMove?: { r: number; c: number; value: number } | null;
   disabled: boolean;
   lastMoveCoord: { r: number; c: number } | null;
   onPlaceCoin: (r: number, c: number) => void;
@@ -25,6 +26,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   evaluation,
   isTeamWin = false,
   showSafetyHints,
+  bestHintMove = null,
   disabled,
   lastMoveCoord,
   onPlaceCoin,
@@ -127,6 +129,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               const isInvertedLineCell = flashInverted && (isTeamWin || isOnViolatingLine);
               const isLastMove = lastMoveCoord?.r === r && lastMoveCoord?.c === c;
               const safety = cellSafetyMap.get(key);
+              const isBestHintCell =
+                showSafetyHints &&
+                !evaluation.isGameOver &&
+                bestHintMove !== null &&
+                bestHintMove.r === r &&
+                bestHintMove.c === c;
 
               let squareBg = isCheckerDark
                 ? 'bg-neutral-100 dark:bg-neutral-900'
@@ -146,6 +154,11 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   disabled={!canInteract || cell !== null}
                   onClick={() => canInteract && !cell && onPlaceCoin(r, c)}
                   onMouseEnter={() => setHoverCell({ r, c })}
+                  title={
+                    !cell && isBestHintCell && bestHintMove
+                      ? `Suggested best move: place [${bestHintMove.value}] here`
+                      : undefined
+                  }
                   aria-label={
                     cell
                       ? `Coin ${cell.value} placed by Player ${cell.placedBy}`
@@ -186,6 +199,18 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       )}
                     </>
                   )}
+
+                  {/* Suggested best-move center dot (dark in light mode, light in dark mode) */}
+                  {!cell &&
+                    isBestHintCell &&
+                    !(isHovered && canInteract && selectedCoin !== null) && (
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none rounded-full bg-black dark:bg-white ${
+                          n <= 6 ? 'h-2.5 w-2.5' : n <= 9 ? 'h-2 w-2' : 'h-1.5 w-1.5'
+                        }`}
+                      />
+                    )}
 
                   {/* Hover preview coin */}
                   {!cell && isHovered && canInteract && selectedCoin !== null && (

@@ -4,6 +4,7 @@ interface CoinTrayProps {
   n: number;
   remainingCoins: Record<number, number>;
   selectedCoin: number | null;
+  hintedCoin?: number | null;
   disabled: boolean;
   onSelectCoin: (value: number) => void;
 }
@@ -12,6 +13,7 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
   n,
   remainingCoins,
   selectedCoin,
+  hintedCoin = null,
   disabled,
   onSelectCoin,
 }) => {
@@ -37,6 +39,7 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
               const count = remainingCoins[val] ?? 0;
               const isSelected = selectedCoin === val && count > 0;
               const isEmpty = count === 0;
+              const isHinted = hintedCoin === val && count > 0;
 
               return (
                 <button
@@ -48,10 +51,12 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
                   title={
                     isEmpty
                       ? `No [${val}] coins left`
-                      : `Select coin [${val}] (${count} remaining)`
+                      : isHinted
+                        ? `Select coin [${val}] (${count} remaining · suggested best move)`
+                        : `Select coin [${val}] (${count} remaining)`
                   }
                   style={{ width: buttonWidth }}
-                  className={`flex items-center justify-center border py-2 px-1 transition-colors min-h-[38px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
+                  className={`relative flex items-center justify-center border py-2 px-1 transition-colors min-h-[38px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
                     isEmpty
                       ? 'border-neutral-300 bg-neutral-100 text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-600 cursor-not-allowed'
                       : isSelected
@@ -59,6 +64,16 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
                         : 'border-black bg-white text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 cursor-pointer'
                   }`}
                 >
+                  {isHinted && (
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute top-1 right-1 h-1.5 w-1.5 rounded-full ${
+                        isSelected
+                          ? 'bg-white dark:bg-black'
+                          : 'bg-black dark:bg-white'
+                      }`}
+                    />
+                  )}
                   <span className="text-sm font-bold tabular-nums leading-none whitespace-nowrap">
                     [{val}] x{count}
                   </span>

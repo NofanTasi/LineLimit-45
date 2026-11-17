@@ -136,7 +136,7 @@ When $\mathrm{emptyCount} \le 30$, shuffled healthy candidates (up to $28$) are 
 
 \section{Varied Best-Move Hint (\texttt{HINTS} $\to$ \texttt{DOT})}
 
-Clicking the \texttt{HINTS} gadget cycles through three display states: \emph{off} $\to$ \emph{cell safety hints} $\to$ \emph{best-move dot} (\texttt{DOT~$\bullet$}) $\to$ \emph{off}. In the \texttt{DOT~$\bullet$} state, \texttt{getBestHintMove(board, rule)} runs the varied \texttt{ADV} or \texttt{CO-OP} selection pipeline (\texttt{varyPlay: true}, $45\,\mathrm{ms}$ budget) once per board state / cycle to select a strong, non-repetitive suggested move $(r^\star, c^\star, v^\star)$, rendered minimally as a centered monochrome dot inside cell $(r^\star, c^\star)$ and a matching corner dot on coin button $[v^\star]$.
+Clicking the \texttt{HINTS} gadget cycles through three display states: \emph{off} $\to$ \emph{cell safety hints} $\to$ \emph{best-move dot} (\texttt{DOT~$\bullet$}) $\to$ \emph{off}. In the \texttt{DOT~$\bullet$} state, \texttt{getBestHintMove(board, rule, selectedCoin)} runs the varied \texttt{ADV} or \texttt{CO-OP} pipeline ($65\,\mathrm{ms}$ budget) restricted to root placements of the player's currently selected coin $v_{\mathrm{sel}}$, strictly rejecting both immediate violations ($v_{\mathrm{sel}} < F(r,c)$) and lookahead-proven losing moves ($\text{score} \le -\text{WIN\_THRESHOLD}$ in \texttt{ADV}, or uncompletable/dead states in \texttt{CO-OP}). If a strong non-losing square $(r^\star, c^\star)$ exists for $v_{\mathrm{sel}}$, it is marked with a centered monochrome dot; if every placement of $v_{\mathrm{sel}}$ leads to a loss, no board dot is shown (and if another coin $v'$ admits a non-losing move, a subtle dot marks $[v']$ in the tray).
 
 \begin{table}[h]
 \centering

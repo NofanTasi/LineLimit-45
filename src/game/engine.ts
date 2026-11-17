@@ -1176,6 +1176,7 @@ function generateOrderedCandidates(
   latinTemplates: number[][][],
   preferLatinBonus: boolean,
   jitterScale = 0,
+  allowedCoin: number | null = null,
 ): SearchCandidate[] {
   const { n, grid, remaining } = ctx;
   const candidates: SearchCandidate[] = [];
@@ -1243,6 +1244,7 @@ function generateOrderedCandidates(
       const onMainX = r === c || r + c === n - 1;
 
       for (let v = 1; v <= n; v++) {
+        if (allowedCoin !== null && v !== allowedCoin) continue;
         if (remaining[v] <= 0 || v < minCoin) continue;
 
         pushMove(ctx, idx, v, prevFloors);
@@ -1362,6 +1364,8 @@ function runIterativeAlphaBeta(
   nodeBudget: number,
   maxBeamWidth: number,
   varyPlay = false,
+  allowedRootCoin: number | null = null,
+  rejectProvenLosses = false,
 ): {
   bestCandidate: SearchCandidate | null;
   topWinningCandidates: SearchCandidate[];
@@ -1373,7 +1377,13 @@ function runIterativeAlphaBeta(
   const latinTemplates = getIncrementalLatinSymmetries(ctx.n);
   const pliesPlayed = ctx.n * ctx.n - ctx.emptyCount;
   const jitterScale = varyPlay ? (pliesPlayed < 4 ? 16 : pliesPlayed < 10 ? 10 : 5.5) : 0;
-  const rootCandidates = generateOrderedCandidates(ctx, latinTemplates, true, jitterScale);
+  const rootCandidates = generateOrderedCandidates(
+    ctx,
+    latinTemplates,
+    true,
+    jitterScale,
+    allowedRootCoin,
+  );
 
   if (rootCandidates.length === 0) {
     return {
@@ -1541,10 +1551,11 @@ function runIterativeAlphaBeta(
     return bestScore;
   }
 
-  let bestMove = rootCandidates[0];
+  let bestMove: SearchCandidate | null = rootCandidates[0];
   let bestRootScore = -Infinity;
   let lastCompletedWinning: SearchCandidate[] = [];
   let lastCompletedScored: { cand: SearchCandidate; score: number }[] = [];
+  const provenLosingSet = new Set<SearchCandidate>();
   let completedExact = false;
 
   const maxDepth = Math.min(ctx.emptyCount, 24);
@@ -1581,6 +1592,12 @@ function runIterativeAlphaBeta(
       popMove(ctx, cand.idx, cand.value, prevFloors);
 
       if (aborted) break;
+
+      if (score <= -WIN_THRESHOLD) {
+        provenLosingSet.add(cand);
+      } else {
+        provenLosingSet.delete(cand);
+      }
 
       iterScored.push({ cand, score });
       if (score > WIN_THRESHOLD) {
@@ -1619,8 +1636,29 @@ function runIterativeAlphaBeta(
     if (now - start >= timeBudgetMs * 0.7) break;
   }
 
-  if (varyPlay && lastCompletedScored.length > 1) {
-    bestMove = pickWeightedDiverseCandidate(lastCompletedScored, bestRootScore, pliesPlayed);
+  const survivingScored = lastCompletedScored.filter(
+    (e) => e.score > -WIN_THRESHOLD && !provenLosingSet.has(e.cand),
+  );
+
+  if (rejectProvenLosses) {
+    if (lastCompletedScored.length > 0 && survivingScored.length === 0) {
+      bestMove = null;
+    } else if (survivingScored.length > 0) {
+      const topSurviving = Math.max(...survivingScored.map((e) => e.score));
+      bestMove =
+        varyPlay && survivingScored.length > 1
+          ? pickWeightedDiverseCandidate(survivingScored, topSurviving, pliesPlayed)
+          : survivingScored.sort((a, b) => b.score - a.score)[0].cand;
+    } else if (bestMove && provenLosingSet.has(bestMove)) {
+      const unrefuted = rootCandidates.filter((c) => !provenLosingSet.has(c));
+      bestMove = unrefuted.length > 0 ? unrefuted[0] : null;
+    }
+  } else if (varyPlay && lastCompletedScored.length > 1) {
+    const pool = survivingScored.length > 0 ? survivingScored : lastCompletedScored;
+    const poolTop = Math.max(...pool.map((e) => e.score));
+    bestMove = pickWeightedDiverseCandidate(pool, poolTop, pliesPlayed);
+  } else if (survivingScored.length > 0 && bestMove && provenLosingSet.has(bestMove)) {
+    bestMove = survivingScored.sort((a, b) => b.score - a.score)[0].cand;
   }
 
   let outcome: 'N' | 'P' | 'DRAW' | 'UNKNOWN' = 'UNKNOWN';
@@ -1893,18 +1931,25 @@ function canCompleteCoopBoard(
   nodeLimit: number,
   deadlineMs: number,
   varyOrder: boolean,
-): boolean {
+): 'COMPLETABLE' | 'IMPOSSIBLE' | 'UNKNOWN' {
   // Theorem 1: Any existing row/col duplicate or 4x4 forbidden-1 makes completion impossible
-  if (hasRowColOr4x4DrawDeath(ctx)) return false;
+  if (hasRowColOr4x4DrawDeath(ctx)) return 'IMPOSSIBLE';
 
   let nodes = 0;
+  let budgetExhausted = false;
 
   function dfs(): boolean {
     if (ctx.emptyCount === 0) return true;
-    if (nodes >= nodeLimit) return false;
+    if (nodes >= nodeLimit) {
+      budgetExhausted = true;
+      return false;
+    }
     if ((nodes & 63) === 0) {
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-      if (now >= deadlineMs) return false;
+      if (now >= deadlineMs) {
+        budgetExhausted = true;
+        return false;
+      }
     }
     nodes++;
 
@@ -1990,17 +2035,21 @@ function canCompleteCoopBoard(
       const ok = dfs();
       popMove(ctx, mrvIdx, v, prevFloors);
       if (ok) return true;
+      if (budgetExhausted) return false;
     }
 
     return false;
   }
 
-  return dfs();
+  if (dfs()) return 'COMPLETABLE';
+  return budgetExhausted ? 'UNKNOWN' : 'IMPOSSIBLE';
 }
 
 function chooseCoopBotMove(
   ctx: FastEngineContext,
   varyPlay: boolean,
+  allowedCoin: number | null = null,
+  rejectGuaranteedLoss = false,
 ): { r: number; c: number; value: number; reasoning: string } | null {
   const { n, grid, remaining, stride } = ctx;
   const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -2025,6 +2074,7 @@ function chooseCoopBotMove(
     health: CoopHealth;
     score: number;
     provenCompletable: boolean;
+    guaranteedLoss: boolean;
   }
 
   const candidates: CoopCandidate[] = [];
@@ -2036,6 +2086,7 @@ function chooseCoopBotMove(
       const minCoin = getCellMinCoin(ctx, idx);
 
       for (let v = minCoin; v <= n; v++) {
+        if (allowedCoin !== null && v !== allowedCoin) continue;
         if (remaining[v] <= 0) continue;
 
         const rowDup = ctx.lineFreq[r * stride + v] > 0;
@@ -2045,6 +2096,18 @@ function chooseCoopBotMove(
         const health = evaluateCoopHealth(ctx);
         const emptiesAfter = ctx.emptyCount;
         popMove(ctx, idx, v, prevFloors);
+
+        const forbidden4x4One =
+          n === 4 &&
+          v === 1 &&
+          (idx === 0 || idx === 3 || idx === 12 || idx === 15 || idx === 5 || idx === 6 || idx === 9 || idx === 10);
+        const isDeadCoop =
+          (emptiesAfter > 0 && health.totalSafe === 0) ||
+          health.deadCells > 0 ||
+          health.maxDeficit > 0 ||
+          rowDup ||
+          colDup ||
+          forbidden4x4One;
 
         let score = 0;
         if (emptiesAfter === 0) {
@@ -2058,10 +2121,6 @@ function chooseCoopBotMove(
           if (health.maxDeficit > 0) score -= 40_000 + health.maxDeficit * 3500;
 
           // Theorem 1: Any row/col duplicate or 4x4 forbidden-1 permanently prevents completion
-          const forbidden4x4One =
-            n === 4 &&
-            v === 1 &&
-            (idx === 0 || idx === 3 || idx === 12 || idx === 15 || idx === 5 || idx === 6 || idx === 9 || idx === 10);
           if (rowDup || colDup || forbidden4x4One) {
             score -= 45_000;
           }
@@ -2082,14 +2141,7 @@ function chooseCoopBotMove(
           }
         }
 
-        if (
-          varyPlay &&
-          emptiesAfter > 0 &&
-          health.deadCells === 0 &&
-          health.maxDeficit === 0 &&
-          !rowDup &&
-          !colDup
-        ) {
+        if (varyPlay && emptiesAfter > 0 && !isDeadCoop) {
           score += (Math.random() - 0.5) * 26;
         }
 
@@ -2101,6 +2153,7 @@ function chooseCoopBotMove(
           health,
           score,
           provenCompletable: emptiesAfter === 0,
+          guaranteedLoss: isDeadCoop,
         });
       }
     }
@@ -2119,40 +2172,42 @@ function chooseCoopBotMove(
     const totalDeadline = start + 75;
     for (let i = 0; i < checkCount; i++) {
       const cand = candidates[i];
-      if (cand.provenCompletable) continue;
-      if (
-        cand.health.deadCells > 0 ||
-        cand.health.maxDeficit > 0 ||
-        cand.health.totalSafe === 0 ||
-        cand.score <= -30_000
-      ) {
-        continue;
-      }
+      if (cand.provenCompletable || cand.guaranteedLoss) continue;
+      if (cand.score <= -30_000) continue;
+
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
       if (now >= totalDeadline) break;
 
       pushMove(ctx, cand.idx, cand.value, prevFloors);
-      const ok = canCompleteCoopBoard(ctx, 5000, Math.min(totalDeadline, now + 20), varyPlay);
+      const res = canCompleteCoopBoard(ctx, 5000, Math.min(totalDeadline, now + 20), varyPlay);
       popMove(ctx, cand.idx, cand.value, prevFloors);
 
-      if (ok) {
+      if (res === 'COMPLETABLE') {
         cand.provenCompletable = true;
         cand.score += 500_000;
         if (!varyPlay) break;
+      } else if (res === 'IMPOSSIBLE') {
+        cand.guaranteedLoss = true;
+        cand.score -= 100_000;
       }
     }
     candidates.sort((a, b) => b.score - a.score);
   }
 
-  let pick = candidates[0];
-  if (varyPlay && candidates.length > 1) {
-    const provenPool = candidates.filter((c) => c.provenCompletable);
-    if (provenPool.length > 1) {
+  const eligible = rejectGuaranteedLoss
+    ? candidates.filter((c) => !c.guaranteedLoss)
+    : candidates;
+  if (eligible.length === 0) return null;
+
+  let pick = eligible[0];
+  if (varyPlay && eligible.length > 1) {
+    const provenPool = eligible.filter((c) => c.provenCompletable);
+    if (provenPool.length > 0) {
       // Every proven-completable move guarantees a valid full-board win — sample uniformly across ALL of them!
       pick = provenPool[Math.floor(Math.random() * provenPool.length)];
     } else {
-      const topScore = candidates[0].score;
-      const pool = candidates.filter((c) => topScore - c.score <= 22);
+      const topScore = eligible[0].score;
+      const pool = eligible.filter((c) => topScore - c.score <= 22);
       if (pool.length > 1) {
         pick = pool[Math.floor(Math.random() * pool.length)];
       }
@@ -2240,17 +2295,50 @@ export function chooseBotMove(
 }
 
 /**
- * Varied high-quality best-move hint for the active rule ('adv' or 'coop').
+ * Varied high-quality best-move hint for the active rule ('adv' or 'coop'),
+ * strictly constrained to `selectedCoin` (when provided) and NEVER returning
+ * a move that immediately violates a line or is proven to lose.
  */
 export function getBestHintMove(
   board: BoardState,
   rule: 'adv' | 'coop' = 'adv',
-  timeBudgetMs = 55,
+  selectedCoin: number | null = null,
+  timeBudgetMs = 65,
 ): { r: number; c: number; value: number } | null {
-  const pick = chooseBotMove(board, {
-    rule,
-    varyPlay: true,
-    timeBudgetMs,
-  });
-  return pick ? { r: pick.r, c: pick.c, value: pick.value } : null;
+  const ctx = createFastContext(board);
+  if (!ctx || ctx.emptyCount === 0) return null;
+
+  if (selectedCoin !== null) {
+    if (selectedCoin < 1 || selectedCoin > ctx.n || ctx.remaining[selectedCoin] <= 0) {
+      return null;
+    }
+  }
+
+  let candidate: { r: number; c: number; value: number } | null = null;
+
+  if (rule === 'coop') {
+    const coopPick = chooseCoopBotMove(ctx, true, selectedCoin, true);
+    if (coopPick) {
+      candidate = { r: coopPick.r, c: coopPick.c, value: coopPick.value };
+    }
+  } else {
+    const search = runIterativeAlphaBeta(ctx, timeBudgetMs, 60000, 36, true, selectedCoin, true);
+    if (search.bestCandidate) {
+      candidate = {
+        r: search.bestCandidate.r,
+        c: search.bestCandidate.c,
+        value: search.bestCandidate.value,
+      };
+    }
+  }
+
+  if (!candidate) return null;
+
+  // Hard invariant guard: never return an occupied square, wrong coin, or line violation
+  const idx = candidate.r * ctx.n + candidate.c;
+  if (ctx.grid[idx] !== 0) return null;
+  if (selectedCoin !== null && candidate.value !== selectedCoin) return null;
+  if (candidate.value < getCellMinCoin(ctx, idx)) return null;
+
+  return candidate;
 }

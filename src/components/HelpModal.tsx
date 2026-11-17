@@ -121,7 +121,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({
               <strong>cell hints</strong> (<strong>minimum safe coin</strong> or{' '}
               <strong>KO</strong> top-left, <strong>OK</strong> / <strong>-pts</strong> for your
               selected coin bottom-right) → <strong>DOT •</strong> (a <strong>center dot</strong>{' '}
-              on a suggested cell with a matching dot on its coin) → <strong>off</strong>.
+              on a strong non-losing cell for your selected coin, or none if every square loses) →{' '}
+              <strong>off</strong>.
             </p>
           </div>
         </div>

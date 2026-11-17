@@ -82,10 +82,41 @@ export default function App() {
     [rule, evaluation.isGameOver, board],
   );
   const bestHintMove = useMemo(() => {
-    if (hintMode !== 'dot' || evaluation.isGameOver || evaluation.isBoardFull) return null;
+    if (
+      hintMode !== 'dot' ||
+      selectedCoin === null ||
+      (remainingCoins[selectedCoin] ?? 0) <= 0 ||
+      evaluation.isGameOver ||
+      evaluation.isBoardFull
+    ) {
+      return null;
+    }
     void hintSeed;
-    return getBestHintMove(board, rule, 45);
-  }, [hintMode, evaluation.isGameOver, evaluation.isBoardFull, board, rule, hintSeed]);
+    return getBestHintMove(board, rule, selectedCoin, 65);
+  }, [
+    hintMode,
+    selectedCoin,
+    remainingCoins,
+    evaluation.isGameOver,
+    evaluation.isBoardFull,
+    board,
+    rule,
+    hintSeed,
+  ]);
+
+  const fallbackHintCoin = useMemo(() => {
+    if (
+      hintMode !== 'dot' ||
+      bestHintMove !== null ||
+      evaluation.isGameOver ||
+      evaluation.isBoardFull
+    ) {
+      return null;
+    }
+    void hintSeed;
+    const anySafeNonLosing = getBestHintMove(board, rule, null, 45);
+    return anySafeNonLosing ? anySafeNonLosing.value : null;
+  }, [hintMode, bestHintMove, evaluation.isGameOver, evaluation.isBoardFull, board, rule, hintSeed]);
 
   const winner: PlayerId | null = useMemo(() => {
     if (!evaluation.isGameOver || moves.length === 0) return null;
@@ -738,7 +769,7 @@ export default function App() {
               n={n}
               remainingCoins={remainingCoins}
               selectedCoin={selectedCoin}
-              hintedCoin={bestHintMove ? bestHintMove.value : null}
+              hintedCoin={fallbackHintCoin}
               disabled={
                 evaluation.isGameOver ||
                 evaluation.isBoardFull ||

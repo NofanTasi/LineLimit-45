@@ -7,13 +7,19 @@
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{booktabs}
 \usepackage{enumitem}
+\usepackage{xcolor}
 \usepackage{hyperref}
 
 \hypersetup{
+  pdftitle={LineLimit 45 Bot Architecture (v2.2.1)},
+  pdfauthor={LineLimit 45 Engine Specification},
   colorlinks=true,
   linkcolor=blue!60!black,
+  citecolor=blue!60!black,
   urlcolor=blue!60!black
 }
+
+\emergencystretch=1.5em
 
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{proposition}[theorem]{Proposition}
@@ -125,7 +131,7 @@ If $\mathrm{safeMoves} = \emptyset$, the Bot deterministically picks the legal m
 
 \begin{enumerate}[nosep]
   \item \textbf{1-Ply Win Scan}: Any safe move leaving $\mathrm{oppSafe} = 0$ is immediately flagged as a forced win ($+100{,}000$).
-  \item \textbf{Symmetry, Orbit, Cliff, and Squeeze Root Ordering}: Candidates $(r,c,v)$ combine $-4\,\mathrm{oppSafe}$, line multiplicity $2.5|\mathcal{L}(r,c)| - 0.4\,d_{\mathrm{center}}$, tight floor-lock bonuses ($v = F(r,c)$, $v \le 2$), zero-splash high-floor cleanup ($v = n$ on $F = n$, $+5$), $[v_{\mathrm{top}}]\,\texttt{x1}$ cliff-parity verification ($+10$ if leaving opponent even playable squares, $-8$ if odd), $\gcd(n,6)=1$ knight-transversal continuity ($+3.5$), and $D_4(L^n)$ compatibility ($+4$). In addition:
+  \item \textbf{Symmetry, Orbit, Cliff, and Squeeze Ordering}: Root candidates $(r,c,v)$ combine opponent squeeze ($-4\,\mathrm{oppSafe}$), line multiplicity ($2.5|\mathcal{L}(r,c)| - 0.4\,d_{\mathrm{center}}$), tight floor locks ($v = F(r,c)$ with $v \le 2$), zero-splash cleanup ($v = n$ on $F = n$, $+5$), $[v_{\mathrm{top}}]\,\texttt{x1}$ cliff parity ($+10$ if leaving an even playable count, $-8$ if odd), $\gcd(n,6)=1$ knight-transversal continuity ($+3.5$), and $D_4(L^n)$ compatibility ($+4$). In addition:
   \begin{itemize}[nosep]
     \item \emph{Opening \& Odd-$n$ ``Steal the Center''}: On odd $n$, P1 receives $+5$ for opening at $(\frac{n-1}{2},\frac{n-1}{2})$; if P1 leaves the center open on ply $\ge 1$, P2 receives $+7.5$ to immediately seize $(\frac{n-1}{2},\frac{n-1}{2})$ with $v = F \le 3$ and flip symmetric parity. On even $n$, P1 receives $+4.5$ for small Main-X openings that preempt rotational mirroring.
     \item \emph{Dynamic $90^\circ$ Quartet Completion}: For P2 on even $n$ off the Main X (Theorem~\ref{thm:quartet}), whenever $O_{90}(r,c)$ currently holds $1$ or $3$ copies of $v$ while $\mathrm{rem}[v]$ is odd, playing $v$ in $(r,c)$ receives $+7$ to $+8$, restoring both orbit and stack parity across up to $3$ varied non-attacking cells (with $+5.5$ off the cross/Main-X on odd $n$).
@@ -145,31 +151,32 @@ In \texttt{CO-OP}, the Bot evaluates every safe move using three exact feasibili
 \begin{enumerate}[nosep]
   \item \textbf{Global \& Per-Line Latin Feasibility ($O(n^2)$)}: Penalizes \texttt{KO} cells ($-50{,}000+$), global sublevel deficits ($-40{,}000+$), row/column duplicates or $4\times 4$ forbidden-$1$s ($-45{,}000$), and \emph{per-row / per-column Latin deficits} ($-38{,}000+$ whenever any missing value $v$ in row $r$ or column $c$ lacks a crossing-compatible empty cell with $F \le v$, or missing values $\le k$ in that row/column exceed empty cells with $F \le k$).
   \item \textbf{Implicit Blueprint Tier Beyond the MRV Horizon ($> 30$ Empty Cells)}: An expanded cached pool of verified zero-violation full boards (all $16$ solutions on $4\times 4$, and toroidal shifts $\times$ $D_4$ symmetries up to $88$ boards on larger $n$) is filtered against the current visible board. When $\mathrm{emptyCount} > 30$ and consistent blueprints exist, one compatible blueprint is sampled per turn and granted a $+2{,}500$ tier bonus while exploration jitter ($\pm 13$) and headroom scoring randomize the move sequence across up to $(n^2)!$ orderings---preventing midgame $n$-queens deadlocks even on $12 \times 12$.
-  \item \textbf{Exact MRV Completion ($\le 30$ Empty Cells)}: Shuffled healthy candidates (up to $28$) are tested via an exact \textbf{Minimum-Remaining-Values (MRV)} solver (\texttt{canCompleteCoopBoard}, $75\,\mathrm{ms}$ shared budget, $5{,}000$ nodes/candidate) with per-row/per-column Hall deficit pruning at every node, sampling \emph{uniformly across all MRV-verified completable moves}.
+  \item \textbf{Exact MRV Completion ($\le 30$ Empty Cells)}: Shuffled healthy candidates (up to $28$) are verified via an exact \textbf{Minimum-Remaining-Values} solver (\texttt{canComplete\allowbreak CoopBoard}, $75\,\mathrm{ms}$ shared budget, $5{,}000$ nodes per candidate) with row/column Hall deficit pruning at every node, sampling \emph{uniformly across all MRV-completable moves}.
 \end{enumerate}
 
 \textbf{Do Co-op Bots Communicate?} \textbf{No.} Both \texttt{ADV} and \texttt{CO-OP} Bots are completely stateless functions of the visible board alone; no target Latin square, history, or hidden message is ever stored or passed between turns.
 
 \section{\texorpdfstring{Varied Best-Move Hint (\texttt{HINTS} $\to$ \texttt{DOT})}{Varied Best-Move Hint (HINTS -> DOT)}}
 
-Clicking the \texttt{HINTS} gadget cycles through three display states: \emph{off} $\to$ \emph{cell safety hints} $\to$ \emph{best-move dot} (\texttt{DOT~$\bullet$}) $\to$ \emph{off}. In the \texttt{DOT~$\bullet$} state, \texttt{getBestHintMove(board, rule, selectedCoin)} runs the varied \texttt{ADV} or \texttt{CO-OP} pipeline ($65\,\mathrm{ms}$ budget) restricted to root placements of the player's currently selected coin $v_{\mathrm{sel}}$, strictly rejecting both immediate violations ($v_{\mathrm{sel}} < F(r,c)$) and lookahead-proven losing moves ($\text{score} \le -\text{WIN\_THRESHOLD}$ in \texttt{ADV}, or uncompletable/dead states in \texttt{CO-OP}). If a strong non-losing square $(r^\star, c^\star)$ exists for $v_{\mathrm{sel}}$, it is marked with a centered monochrome dot; if every placement of $v_{\mathrm{sel}}$ leads to a loss, no board dot is shown (and if another coin $v'$ admits a non-losing move, a subtle dot marks $[v']$ in the tray).
+Clicking the \texttt{HINTS} gadget cycles through three display states: \emph{off} $\to$ \emph{cell safety hints} $\to$ \emph{best-move dot} (\texttt{DOT~$\bullet$}) $\to$ \emph{off}. In the \texttt{DOT~$\bullet$} state, \texttt{getBestHintMove(\allowbreak board, \allowbreak rule, \allowbreak selectedCoin)} runs the varied \texttt{ADV} or \texttt{CO-OP} pipeline ($65\,\mathrm{ms}$ budget) restricted to root placements of the player's currently selected coin $v_{\mathrm{sel}}$, strictly rejecting both immediate violations ($v_{\mathrm{sel}} < F(r,c)$) and lookahead-proven losing moves ($\mathrm{score} \le -\mathrm{WIN\_THRESHOLD}$ in \texttt{ADV}, or uncompletable/dead states in \texttt{CO-OP}). If a strong non-losing square $(r^\star, c^\star)$ exists for $v_{\mathrm{sel}}$, it is marked with a centered monochrome dot; if every placement of $v_{\mathrm{sel}}$ leads to a loss, no board dot is shown (and if another coin $v'$ admits a non-losing move, a subtle dot marks $[v']$ in the tray).
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
-\small
-\begin{tabular}{@{}lll@{}}
+\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular*}{\textwidth}{@{\extracolsep{\fill}}lll@{}}
 \toprule
 \textbf{Aspect} & \textbf{Adversarial (\texttt{ADV})} & \textbf{Cooperative (\texttt{CO-OP})} \\
 \midrule
-Objective & Leave opponent with $0$ safe moves & Fill all $n^2$ cells safely ($4\times 4$--$12\times 12$) \\
-Core Search & Iterative Alpha-Beta + Frozen Tablebase & Blueprint Tier + Row/Col Hall + MRV DFS \\
-Theorem~\ref{thm:draw-latin} (Row/Col Dup) & Shifts max-ply parity bound ($-1$) & Strictly penalized/pruned ($-45{,}000$) \\
-$[v_{\mathrm{top}}]\,\texttt{x1}$ Cliff ($K_{\mathrm{cliff}}$) & Parity-choice bonus ($+24$) \& guard & Prevented via global \& row/col headroom \\
-Symmetry Geometry & $90^\circ$ Quartet, Steal-Center, $w\to w+1$ & Toroidal $\times D_4$ Pool + $90^\circ$ Quartet \\
-Endgame Exactness & $O(n^2)$ Frozen-Ceiling + Nimber/AB & Exact MRV completion ($\le 30$ empty) \\
-Bot Communication & None (stateless) & None (stateless; shared board only) \\
+Objective & Leave opponent with $0$ safe moves & Fill all $n^2$ cells ($4\times 4$--$12\times 12$) \\
+Core Search & Alpha-Beta + Frozen Tablebase & Blueprint Tier + Hall + MRV DFS \\
+Row/Col Dup (Thm.~\ref{thm:draw-latin}) & Shifts max-ply parity bound ($-1$) & Strictly pruned ($-45{,}000$) \\
+Top-Coin Cliff ($K_{\mathrm{cliff}}$) & Parity-choice bonus ($+24$) \& guard & Global \& row/col floor headroom \\
+Symmetry Geometry & $90^\circ$ Quartet, Center, $w\to w+1$ & Toroidal $\times D_4$ Pool + Quartet \\
+Endgame Exactness & $O(n^2)$ Frozen-Ceiling + Alpha-Beta & Exact MRV solver ($\le 30$ empty) \\
+Bot Communication & None (stateless; board only) & None (stateless; board only) \\
 \bottomrule
-\end{tabular}
+\end{tabular*}
 \caption{Summary comparison of \texttt{ADV} and \texttt{CO-OP} pipelines in LineLimit 45 (v2.2.1).}
 \end{table}
 

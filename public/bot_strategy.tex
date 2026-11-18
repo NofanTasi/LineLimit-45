@@ -55,7 +55,7 @@ The winner's score is the sum of all distinct board coins in $\bigcup_{L \text{ 
 
 \section{Exact Combinatorial Theorems in the Engine}
 
-\subsection{Zero-Slack Lock-Floor Theorem ($O(1)$ Legality)}
+\subsection{\texorpdfstring{Zero-Slack Lock-Floor Theorem ($O(1)$ Legality)}{Zero-Slack Lock-Floor Theorem (O(1) Legality)}}
 
 For each line $L$ of a currently safe board, let $f_L(v)$ be the multiplicity of coin $v$ on $L$ and $\mathrm{cum}_L(v) = \sum_{w=1}^{v} f_L(w)$.
 
@@ -72,7 +72,7 @@ Then placing coin $v$ on an empty cell $(r,c)$ keeps the board safe iff
 
 By maintaining $f_L(v)$ and $z(L)$ incrementally, legality of $(r,c,v)$ is tested in $O(1)$ time, and the exact total count of safe moves across the board, $\mathrm{totalSafe}$, is computed in $O(n^2)$ time via $\sum_{(r,c)\text{ empty}} \mathrm{availGeq}[F(r,c)]$.
 
-\subsection{Draw $\Longleftrightarrow$ Incremental Latin Square}
+\subsection{\texorpdfstring{Draw $\Longleftrightarrow$ Incremental Latin Square}{Draw <=> Incremental Latin Square}}
 
 \begin{theorem}[Latin Necessity of Full Boards]\label{thm:draw-latin}
 For every $n \ge 4$, a completely filled $n \times n$ board is free of violations if and only if it is an incremental $n \times n$ Latin square (every row and column is a permutation of $\{1,\dots,n\}$).
@@ -86,7 +86,7 @@ By induction on $v = 1,\dots,n$. No row or column can hold two $1$s ($\mathrm{co
 If any row or column contains two equal coins (even two copies of $n$), or on $n=4$ if coin $1$ occupies any corner or center cell (absent in all $16$ incremental $4\times 4$ Latin squares), zero full-board Draws remain reachable: at least one empty cell must become dead (\texttt{KO}) before ply $n^2$.
 \end{corollary}
 
-\subsection{The $90^\circ$ Non-Attacking Quartet Theorem and Toroidal Transversals}
+\subsection{\texorpdfstring{The $90^\circ$ Non-Attacking Quartet Theorem and Toroidal Transversals}{The 90-Degree Non-Attacking Quartet Theorem and Toroidal Transversals}}
 
 \begin{theorem}[$90^\circ$ Quartet Independence]\label{thm:quartet}
 Let $n$ be even and let $(r,c)$ lie strictly off the Main X ($r \ne c$ and $r+c \ne n-1$). Then its $90^\circ$ rotational orbit
@@ -119,7 +119,7 @@ Then no move can ever lock another playable square, and every play sequence last
 
 Evaluating this condition in $O(n^2)$ inside \texttt{negamax} prunes up to $24$ plies of endgame permutations instantaneously, even on $12 \times 12$.
 
-\section{Adversarial Mode (\texttt{ADV}) Strategy}
+\section{\texorpdfstring{Adversarial Mode (\texttt{ADV}) Strategy}{Adversarial Mode (ADV) Strategy}}
 
 If $\mathrm{safeMoves} = \emptyset$, the Bot deterministically picks the legal move minimizing $\mathrm{totalWinningsIfLost}$. Otherwise, \texttt{ADV} runs iterative-deepening Alpha-Beta Negamax ($T = 95\,\mathrm{ms}$, $60{,}000$ nodes, beam width $36$, root beam $72$, TT cap $120{,}000$):
 
@@ -139,18 +139,18 @@ If $\mathrm{safeMoves} = \emptyset$, the Bot deterministically picks the legal m
   \item \textbf{Maximal Non-Transparent Play Diversity}: Candidate arrays are Fisher--Yates shuffled before sorting to eliminate row-major top-left bias, a single compatible $D_4(L^n)$ template is chosen at random per move, immediate/forced wins within $4$ plies are sampled uniformly, and non-losing candidates (spread $14\text{--}22$ points, up to $28$ candidates) are sampled via phase-annealed Boltzmann weights ($\tau \in [5.0, 8.5]$).
 \end{enumerate}
 
-\section{Cooperative Mode (\texttt{CO-OP}) Strategy \& Implicit Coordination}
+\section{\texorpdfstring{Cooperative Mode (\texttt{CO-OP}) Strategy \& Implicit Coordination}{Cooperative Mode (CO-OP) Strategy and Implicit Coordination}}
 
 In \texttt{CO-OP}, the Bot evaluates every safe move using three exact feasibility layers:
 \begin{enumerate}[nosep]
   \item \textbf{Global \& Per-Line Latin Feasibility ($O(n^2)$)}: Penalizes \texttt{KO} cells ($-50{,}000+$), global sublevel deficits ($-40{,}000+$), row/column duplicates or $4\times 4$ forbidden-$1$s ($-45{,}000$), and \emph{per-row / per-column Latin deficits} ($-38{,}000+$ whenever any missing value $v$ in row $r$ or column $c$ lacks a crossing-compatible empty cell with $F \le v$, or missing values $\le k$ in that row/column exceed empty cells with $F \le k$).
-  \item \textbf{Implicit Blueprint Tier Beyond the MRV Horizon ($> 30$ Empty Cells)}: An expanded cached pool of verified zero-violation full boards (all $16$ solutions on $4\times 4$, and toroidal shifts $\times$ $D_4$ symmetries up to $88$ boards on larger $n$) is filtered against the current visible board. When $\mathrm{emptyCount} > 30$ and consistent blueprints exist, one compatible blueprint is sampled per turn and granted a $+2{,}500$ tier bonus while exploration jitter ($\pm 13$) and headroom scoring randomize the move sequence across up to $(n^2)!$ orderings—preventing midgame $n$-queens deadlocks even on $12 \times 12$.
+  \item \textbf{Implicit Blueprint Tier Beyond the MRV Horizon ($> 30$ Empty Cells)}: An expanded cached pool of verified zero-violation full boards (all $16$ solutions on $4\times 4$, and toroidal shifts $\times$ $D_4$ symmetries up to $88$ boards on larger $n$) is filtered against the current visible board. When $\mathrm{emptyCount} > 30$ and consistent blueprints exist, one compatible blueprint is sampled per turn and granted a $+2{,}500$ tier bonus while exploration jitter ($\pm 13$) and headroom scoring randomize the move sequence across up to $(n^2)!$ orderings---preventing midgame $n$-queens deadlocks even on $12 \times 12$.
   \item \textbf{Exact MRV Completion ($\le 30$ Empty Cells)}: Shuffled healthy candidates (up to $28$) are tested via an exact \textbf{Minimum-Remaining-Values (MRV)} solver (\texttt{canCompleteCoopBoard}, $75\,\mathrm{ms}$ shared budget, $5{,}000$ nodes/candidate) with per-row/per-column Hall deficit pruning at every node, sampling \emph{uniformly across all MRV-verified completable moves}.
 \end{enumerate}
 
 \textbf{Do Co-op Bots Communicate?} \textbf{No.} Both \texttt{ADV} and \texttt{CO-OP} Bots are completely stateless functions of the visible board alone; no target Latin square, history, or hidden message is ever stored or passed between turns.
 
-\section{Varied Best-Move Hint (\texttt{HINTS} $\to$ \texttt{DOT})}
+\section{\texorpdfstring{Varied Best-Move Hint (\texttt{HINTS} $\to$ \texttt{DOT})}{Varied Best-Move Hint (HINTS -> DOT)}}
 
 Clicking the \texttt{HINTS} gadget cycles through three display states: \emph{off} $\to$ \emph{cell safety hints} $\to$ \emph{best-move dot} (\texttt{DOT~$\bullet$}) $\to$ \emph{off}. In the \texttt{DOT~$\bullet$} state, \texttt{getBestHintMove(board, rule, selectedCoin)} runs the varied \texttt{ADV} or \texttt{CO-OP} pipeline ($65\,\mathrm{ms}$ budget) restricted to root placements of the player's currently selected coin $v_{\mathrm{sel}}$, strictly rejecting both immediate violations ($v_{\mathrm{sel}} < F(r,c)$) and lookahead-proven losing moves ($\text{score} \le -\text{WIN\_THRESHOLD}$ in \texttt{ADV}, or uncompletable/dead states in \texttt{CO-OP}). If a strong non-losing square $(r^\star, c^\star)$ exists for $v_{\mathrm{sel}}$, it is marked with a centered monochrome dot; if every placement of $v_{\mathrm{sel}}$ leads to a loss, no board dot is shown (and if another coin $v'$ admits a non-losing move, a subtle dot marks $[v']$ in the tray).
 

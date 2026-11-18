@@ -56,12 +56,12 @@ export const CoinTray: React.FC<CoinTrayProps> = ({
                         : `Select coin [${val}] (${count} remaining)`
                   }
                   style={{ width: buttonWidth }}
-                  className={`relative flex items-center justify-center border py-2 px-1 transition-colors min-h-[38px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
+                  className={`relative flex items-center justify-center py-2 px-1 transition-colors min-h-[38px] shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black dark:focus-visible:outline-white ${
                     isEmpty
-                      ? 'border-neutral-300 bg-neutral-100 text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-600 cursor-not-allowed'
+                      ? 'border-2 border-neutral-400 bg-neutral-100 text-neutral-400 dark:border-neutral-600 dark:bg-neutral-950 dark:text-neutral-600 cursor-not-allowed'
                       : isSelected
-                        ? 'border-2 border-black bg-black text-white dark:border-white dark:bg-white dark:text-black cursor-pointer'
-                        : 'border-black bg-white text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 cursor-pointer'
+                        ? 'border-[3px] border-black bg-black text-white dark:border-white dark:bg-white dark:text-black cursor-pointer'
+                        : 'border-2 border-black bg-white text-black hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 cursor-pointer'
                   }`}
                 >
                   {isHinted && (

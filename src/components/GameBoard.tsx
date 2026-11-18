@@ -110,7 +110,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   return (
     <div className="w-full select-none font-mono">
       {/* Classic B&W Grid (supports light & dark modes) */}
-      <div className="relative w-full aspect-square border-2 border-black bg-white dark:border-white dark:bg-black">
+      <div className="relative w-full aspect-square border-[3px] border-black bg-white dark:border-white dark:bg-black">
         <div
           className="relative grid h-full w-full"
           style={{
@@ -138,12 +138,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
               let squareBg = isCheckerDark
                 ? 'bg-neutral-100 dark:bg-neutral-900'
                 : 'bg-white dark:bg-black';
-              let squareBorder = 'border-black/35 dark:border-white/35';
+              let squareBorder = 'border-black/45 dark:border-white/45';
               if (isInvertedLineCell) {
                 squareBg = isCheckerDark
                   ? 'bg-neutral-900 dark:bg-neutral-100'
                   : 'bg-black dark:bg-white';
-                squareBorder = 'border-white/35 dark:border-black/35';
+                squareBorder = 'border-white/45 dark:border-black/45';
               }
 
               return (
@@ -163,7 +163,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                       ? `Coin ${cell.value} placed by Player ${cell.placedBy}`
                       : `Empty cell`
                   }
-                  className={`relative flex items-center justify-center min-h-0 min-w-0 border-r border-b ${squareBorder} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-black dark:focus-visible:outline-white ${squareBg} ${
+                  className={`relative flex items-center justify-center min-h-0 min-w-0 border-r-2 border-b-2 ${squareBorder} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-black dark:focus-visible:outline-white ${squareBg} ${
                     c === n - 1 ? 'border-r-0' : ''
                   } ${r === n - 1 ? 'border-b-0' : ''} ${
                     canInteract && !cell ? 'cursor-pointer' : 'cursor-default'
@@ -215,7 +215,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {!cell && isHovered && canInteract && selectedCoin !== null && (
                     <div
                       aria-hidden="true"
-                      className={`flex ${coinCircleSize} items-center justify-center rounded-full border border-dashed border-black bg-white/80 font-bold text-neutral-600 dark:border-white dark:bg-black/80 dark:text-neutral-300 ${coinFontSize}`}
+                      className={`flex ${coinCircleSize} items-center justify-center rounded-full border-2 border-dashed border-black bg-white/80 font-bold text-neutral-600 dark:border-white dark:bg-black/80 dark:text-neutral-300 ${coinFontSize}`}
                     >
                       {selectedCoin}
                     </div>
@@ -225,25 +225,27 @@ export const GameBoard: React.FC<GameBoardProps> = ({
                   {cell && (
                     <>
                       <div
-                        className={`relative flex ${coinCircleSize} items-center justify-center rounded-full border-[3px] ${
+                        className={`relative flex ${coinCircleSize} items-center justify-center rounded-full ${
+                          n >= 10 ? 'border-[3.5px]' : 'border-4'
+                        } ${
                           cell.placedBy === 1
                             ? `bg-white text-black border-black ${
                                 isInvertedLineCell
-                                  ? 'ring-1 ring-white dark:ring-0'
-                                  : 'dark:ring-1 dark:ring-white'
+                                  ? 'ring-2 ring-white dark:ring-0'
+                                  : 'dark:ring-2 dark:ring-white'
                               }`
                             : `bg-black text-white border-white ${
                                 isInvertedLineCell
-                                  ? 'dark:ring-1 dark:ring-black'
-                                  : 'ring-1 ring-black dark:ring-0'
+                                  ? 'dark:ring-2 dark:ring-black'
+                                  : 'ring-2 ring-black dark:ring-0'
                               }`
                         } ${
                           isViolatingCoin
                             ? isInvertedLineCell
-                              ? 'outline-2 outline-offset-1 outline-white dark:outline-black'
-                              : 'outline-2 outline-offset-1 outline-black dark:outline-white'
+                              ? 'outline-[3px] outline-offset-1 outline-white dark:outline-black'
+                              : 'outline-[3px] outline-offset-1 outline-black dark:outline-white'
                             : isLastMove
-                              ? 'outline-1 outline-offset-1 outline-neutral-500'
+                              ? 'outline-2 outline-offset-1 outline-neutral-500'
                               : ''
                         }`}
                       >

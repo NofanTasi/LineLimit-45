@@ -14,7 +14,7 @@ export const Logo: React.FC<LogoProps> = ({ className = 'h-7 w-7' }) => {
       className={className}
     >
       {/* Vintage outer frame */}
-      <rect x="4" y="4" width="56" height="56" stroke="currentColor" strokeWidth="4" />
+      <rect x="4" y="4" width="56" height="56" stroke="currentColor" strokeWidth="5" />
 
       {/* Left upright L */}
       <rect x="11" y="19" width="3" height="26" fill="currentColor" />

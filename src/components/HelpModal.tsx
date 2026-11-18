@@ -66,9 +66,9 @@ export const HelpModal: React.FC<HelpModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md max-h-[85vh] overflow-y-auto border-2 border-black bg-white p-5 text-black dark:border-white dark:bg-black dark:text-white"
+        className="w-full max-w-md max-h-[85vh] overflow-y-auto border-[3px] border-black bg-white p-5 text-black dark:border-white dark:bg-black dark:text-white"
       >
-        <div className="flex items-center justify-between gap-2 border-b border-black pb-2 dark:border-white">
+        <div className="flex items-center justify-between gap-2 border-b-2 border-black pb-2 dark:border-white">
           <h2 id="howto-title" className="text-sm font-bold tracking-tight">
             HOW TO PLAY · {rule === 'coop' ? 'CO-OP' : 'ADVERSARIAL'} ({modeLabel})
           </h2>
@@ -130,7 +130,7 @@ export const HelpModal: React.FC<HelpModalProps> = ({
         <button
           type="button"
           onClick={onClose}
-          className="mt-4 w-full border border-black bg-black py-1.5 text-xs font-semibold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 cursor-pointer"
+          className="mt-4 w-full border-2 border-black bg-black py-1.5 text-xs font-semibold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 cursor-pointer"
         >
           CLOSE
         </button>

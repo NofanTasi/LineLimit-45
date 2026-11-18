@@ -355,7 +355,7 @@ export default function App() {
   return (
     <div className="h-screen w-screen overflow-hidden bg-white text-black dark:bg-black dark:text-white font-mono flex flex-col">
       {/* Minimal Header */}
-      <header className="shrink-0 border-b border-black bg-white dark:border-white dark:bg-black px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      <header className="shrink-0 border-b-2 border-black bg-white dark:border-white dark:bg-black px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 shrink-0">
           <Logo className="h-7 w-7 shrink-0" />
           <span className="text-sm font-bold tracking-tight whitespace-nowrap shrink-0">
@@ -365,13 +365,13 @@ export default function App() {
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Zoom Controls */}
-          <div className="flex items-center border border-black dark:border-white">
+          <div className="flex items-center border-2 border-black dark:border-white">
             <button
               type="button"
               onClick={() => stepZoom(-0.1)}
               aria-label="Zoom out"
               title="Zoom out"
-              className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-900 border-r border-black dark:border-white whitespace-nowrap shrink-0"
+              className="px-2 py-1 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-900 border-r-2 border-black dark:border-white whitespace-nowrap shrink-0"
             >
               -
             </button>
@@ -379,7 +379,7 @@ export default function App() {
               type="button"
               onClick={() => setZoomMode('fit')}
               title="Fit game to screen"
-              className={`px-2.5 py-1 text-[11px] font-semibold tabular-nums whitespace-nowrap shrink-0 border-r border-black dark:border-white ${
+              className={`px-2.5 py-1 text-[11px] font-semibold tabular-nums whitespace-nowrap shrink-0 border-r-2 border-black dark:border-white ${
                 zoomMode === 'fit'
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
@@ -405,7 +405,7 @@ export default function App() {
             disabled={isUpdating}
             onClick={() => void checkAndUpdate()}
             title="Check for the latest version and reload"
-            className={`border border-black dark:border-white px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 disabled:opacity-50 ${
+            className={`border-2 border-black dark:border-white px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0 disabled:opacity-50 ${
               needRefresh
                 ? 'bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200'
                 : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
@@ -418,7 +418,7 @@ export default function App() {
             type="button"
             onClick={() => startNewGame(n, mode)}
             title="Start a new game"
-            className="border border-black bg-black px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
+            className="border-2 border-black bg-black px-3 py-1 text-xs font-semibold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
           >
             NEW
           </button>
@@ -426,11 +426,11 @@ export default function App() {
       </header>
 
       {/* Minimal Controls Strip */}
-      <div className="shrink-0 border-b border-black/20 bg-neutral-50 dark:border-white/25 dark:bg-neutral-950 px-4 py-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
+      <div className="shrink-0 border-b-2 border-black/30 bg-neutral-50 dark:border-white/35 dark:bg-neutral-950 px-4 py-2 flex flex-wrap items-center justify-center gap-3 text-[11px]">
         {/* Size list selector (4 to 12) */}
         <label
           title="Choose board size (4×4 to 12×12)"
-          className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1"
+          className="flex items-center gap-1.5 border-2 border-black bg-white dark:border-white dark:bg-black px-2 py-1"
         >
           <span className="font-semibold text-neutral-600 dark:text-neutral-400">SIZE</span>
           <select
@@ -455,14 +455,14 @@ export default function App() {
         <div
           role="group"
           aria-label="Play rule"
-          className="flex items-center border border-black bg-white dark:border-white dark:bg-black"
+          className="flex items-center border-2 border-black bg-white dark:border-white dark:bg-black"
         >
           <button
             type="button"
             title="Adversarial: force opponent to violate"
             aria-pressed={rule === 'adv'}
             onClick={() => startNewGame(n, mode, 'adv')}
-            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 font-semibold border-r-2 border-black/45 dark:border-white/45 whitespace-nowrap shrink-0 ${
               rule === 'adv'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
@@ -486,12 +486,12 @@ export default function App() {
         </div>
 
         {/* Opponent mode selector */}
-        <div className="flex items-center border border-black bg-white dark:border-white dark:bg-black">
+        <div className="flex items-center border-2 border-black bg-white dark:border-white dark:bg-black">
           <button
             type="button"
             title={rule === 'coop' ? 'Two human players cooperate' : 'Two human players compete'}
             onClick={() => startNewGame(n, 'pvp', rule)}
-            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 font-semibold border-r-2 border-black/45 dark:border-white/45 whitespace-nowrap shrink-0 ${
               mode === 'pvp'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
@@ -507,7 +507,7 @@ export default function App() {
                 : 'You play first (White) against Bot (Black)'
             }
             onClick={() => startNewGame(n, 'pvbot', rule)}
-            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 font-semibold border-r-2 border-black/45 dark:border-white/45 whitespace-nowrap shrink-0 ${
               mode === 'pvbot'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
@@ -523,7 +523,7 @@ export default function App() {
                 : 'Bot plays first (White) against you (Black)'
             }
             onClick={() => startNewGame(n, 'botvp', rule)}
-            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 font-semibold border-r-2 border-black/45 dark:border-white/45 whitespace-nowrap shrink-0 ${
               mode === 'botvp'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
@@ -558,7 +558,7 @@ export default function App() {
               onClick={() => setIsAutoPlaying((p) => !p)}
               aria-pressed={isAutoPlaying}
               title={isAutoPlaying ? 'Pause automatic Bot moves' : 'Resume automatic Bot moves'}
-              className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 disabled:opacity-35 disabled:cursor-not-allowed ${
+              className={`border-2 border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 disabled:opacity-35 disabled:cursor-not-allowed ${
                 isAutoPlaying
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
@@ -569,7 +569,7 @@ export default function App() {
 
             <label
               title="Time delay between Bot moves"
-              className="flex items-center gap-1.5 border border-black bg-white dark:border-white dark:bg-black px-2 py-1"
+              className="flex items-center gap-1.5 border-2 border-black bg-white dark:border-white dark:bg-black px-2 py-1"
             >
               <span className="font-semibold text-neutral-600 dark:text-neutral-400">SPEED</span>
               <select
@@ -596,14 +596,14 @@ export default function App() {
         <div
           role="group"
           aria-label="Display theme"
-          className="flex items-center border border-black bg-white dark:border-white dark:bg-black"
+          className="flex items-center border-2 border-black bg-white dark:border-white dark:bg-black"
         >
           <button
             type="button"
             title="Light mode (black on white)"
             aria-pressed={theme === 'light'}
             onClick={() => setTheme('light')}
-            className={`px-2.5 py-1 font-semibold border-r border-black/30 dark:border-white/30 whitespace-nowrap shrink-0 ${
+            className={`px-2.5 py-1 font-semibold border-r-2 border-black/45 dark:border-white/45 whitespace-nowrap shrink-0 ${
               theme === 'light'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-black hover:bg-neutral-100 dark:text-white dark:hover:bg-neutral-900'
@@ -633,7 +633,7 @@ export default function App() {
             onClick={handleUndo}
             disabled={!canUndo}
             title="Take back the last turn"
-            className="border border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+            className="border-2 border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 disabled:opacity-35 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
           >
             UNDO
           </button>
@@ -657,7 +657,7 @@ export default function App() {
                   ? 'Cell hints active (click for move dot)'
                   : 'Move dot active (click to hide)'
             }
-            className={`border border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
+            className={`border-2 border-black dark:border-white px-2.5 py-1 font-semibold whitespace-nowrap shrink-0 ${
               hintMode !== 'none'
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'bg-white text-black hover:bg-neutral-100 dark:bg-black dark:text-white dark:hover:bg-neutral-900'
@@ -670,7 +670,7 @@ export default function App() {
             onClick={() => setShowHelp(true)}
             aria-haspopup="dialog"
             title="How to play the current mode"
-            className="border border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
+            className="border-2 border-black bg-white text-black px-2.5 py-1 font-semibold hover:bg-neutral-100 dark:border-white dark:bg-black dark:text-white dark:hover:bg-neutral-900 whitespace-nowrap shrink-0"
           >
             HELP
           </button>
@@ -699,7 +699,7 @@ export default function App() {
             className="flex flex-col"
           >
             {/* Status Line */}
-            <div className="mb-2.5 flex items-center justify-between gap-2 border border-black dark:border-white px-3 py-2 text-xs">
+            <div className="mb-2.5 flex items-center justify-between gap-2 border-2 border-black dark:border-white px-3 py-2 text-xs">
               {evaluation.isGameOver && winner !== null && loser !== null ? (
                 <>
                   <span className="font-bold">
@@ -711,7 +711,7 @@ export default function App() {
                     type="button"
                     onClick={() => startNewGame(n, mode, rule)}
                     title="Start a new game"
-                    className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
+                    className="border-2 border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-200 whitespace-nowrap shrink-0"
                   >
                     AGAIN
                   </button>
@@ -725,7 +725,7 @@ export default function App() {
                     type="button"
                     onClick={() => startNewGame(n, mode, rule)}
                     title="Start a new game"
-                    className="border border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white dark:border-white dark:bg-white dark:text-black whitespace-nowrap shrink-0"
+                    className="border-2 border-black bg-black px-2.5 py-0.5 text-[11px] font-bold text-white dark:border-white dark:bg-white dark:text-black whitespace-nowrap shrink-0"
                   >
                     AGAIN
                   </button>
@@ -781,7 +781,7 @@ export default function App() {
 
             {/* Violation Proof or Fixed-Height Two-Line Rule */}
             {evaluation.isGameOver ? (
-              <div className="mt-3 border border-black bg-neutral-100 dark:border-white dark:bg-neutral-950 px-3 py-2 text-[11px] space-y-1">
+              <div className="mt-3 border-2 border-black bg-neutral-100 dark:border-white dark:bg-neutral-950 px-3 py-2 text-[11px] space-y-1">
                 {evaluation.violatingLines.map((line) => {
                   const thr = line.violatedThreshold ?? 0;
                   const scoredVals = line.coins

@@ -1171,6 +1171,26 @@ function shuffleInPlace<T>(arr: T[]): T[] {
   return arr;
 }
 
+/**
+ * For gcd(n, 6) = 1 (n = 5, 7, 11), checks O(1) toroidal knight-step neighbors
+ * ((r +- 1) mod n, (c +- 2) mod n) and ((r +- 2) mod n, (c +- 1) mod n) holding coin `v`.
+ */
+function countToroidalKnightMatches(
+  grid: Uint8Array,
+  n: number,
+  r: number,
+  c: number,
+  v: number,
+): number {
+  if (n % 2 === 0 || n % 3 === 0) return 0;
+  let hits = 0;
+  if (grid[((r + 1) % n) * n + ((c + 2) % n)] === v) hits++;
+  if (grid[((r + n - 1) % n) * n + ((c + n - 2) % n)] === v) hits++;
+  if (grid[((r + 2) % n) * n + ((c + 1) % n)] === v) hits++;
+  if (grid[((r + n - 2) % n) * n + ((c + n - 1) % n)] === v) hits++;
+  return hits;
+}
+
 function generateOrderedCandidates(
   ctx: FastEngineContext,
   latinTemplates: number[][][],
@@ -1241,7 +1261,11 @@ function generateOrderedCandidates(
       const lineWeight = ls.length; // 4 lines in interior, 3 on edges/main diags
       const centerDist = Math.abs(r - center) + Math.abs(c - center);
       const symVal = grid[(n - 1 - r) * n + (n - 1 - c)];
+      const rot90Val = grid[c * n + (n - 1 - r)];
+      const rot270Val = grid[(n - 1 - c) * n + r];
       const onMainX = r === c || r + c === n - 1;
+      const isOddCenter = n % 2 === 1 && r === center && c === center;
+      const onOddCross = n % 2 === 1 && (r === center || c === center);
 
       for (let v = 1; v <= n; v++) {
         if (allowedCoin !== null && v !== allowedCoin) continue;
@@ -1268,15 +1292,51 @@ function generateOrderedCandidates(
           orderScore += oppPlayableApprox % 2 === 0 ? 10 : -8;
         }
 
-        // Gentle opening & 180-degree mirror nudges (soft enough to keep wide opening variety)
+        // 1) Opening & Odd-n "Steal the Center" rule
         if (pliesPlayed === 0) {
-          if (n % 2 === 1 && r === center && c === center && v <= 2) {
+          if (isOddCenter && v <= 2) {
             orderScore += 5;
           } else if (n % 2 === 0 && onMainX && v <= 2) {
             orderScore += 4.5;
           }
-        } else if (n % 2 === 0 && !isStarter && symVal === v && remaining[v] % 2 === 1) {
-          orderScore += 7;
+        } else if (isOddCenter && v === minCoin && v <= 3) {
+          // If P1 left the unique odd-n center open, seize it immediately to flip mirror parity
+          orderScore += !isStarter ? 7.5 : 5;
+        }
+
+        // 2) Even-n 90-degree Non-Attacking Quartet Orbit completion & 180-degree mirror
+        if (pliesPlayed > 0 && n % 2 === 0 && !onMainX) {
+          const orbitSameCount =
+            (rot90Val === v ? 1 : 0) + (symVal === v ? 1 : 0) + (rot270Val === v ? 1 : 0);
+          if (!isStarter && orbitSameCount % 2 === 1 && remaining[v] % 2 === 1) {
+            // Completing 1->2 or 3->4 in an off-X 90-deg quartet restores stack & orbit parity
+            orderScore += rot270Val === v || symVal === v ? 8 : 7;
+          } else if (!drawsDeadBefore && orbitSameCount > 0 && v <= 2) {
+            orderScore += 2.5;
+          }
+        } else if (pliesPlayed > 0 && n % 2 === 1 && !isOddCenter && !onMainX && !onOddCross) {
+          // Odd-n off-cross/off-X 90-degree / 180-degree mirror when center already settled
+          const orbitSameCount =
+            (rot90Val === v ? 1 : 0) + (symVal === v ? 1 : 0) + (rot270Val === v ? 1 : 0);
+          if (orbitSameCount % 2 === 1 && remaining[v] % 2 === 1) {
+            orderScore += 5.5;
+          }
+        }
+
+        // 3) Escalating Mirror (w -> w + 1) when an opponent's Main-X or Odd-Cross move blocked w
+        if (
+          pliesPlayed > 0 &&
+          (onMainX || onOddCross) &&
+          v === minCoin &&
+          v >= 2 &&
+          (symVal === v - 1 || rot90Val === v - 1 || rot270Val === v - 1)
+        ) {
+          orderScore += 6;
+        }
+
+        // 4) Toroidal Knight-Transversal continuity for gcd(n, 6) = 1 (n = 5, 7, 11)
+        if (!drawsDeadBefore && v <= 3 && countToroidalKnightMatches(grid, n, r, c, v) > 0) {
+          orderScore += 3.5;
         }
 
         if (chosenTemplate.length > 0) {
@@ -2131,6 +2191,23 @@ function chooseCoopBotMove(
 
           // Gentle nudge to avoid crowding low floors, while relieving tight small-coin supply
           if (v === minCoin && health.minHeadroom >= 2) score += 2;
+
+          // Even-n 90-degree Non-Attacking Quartet Orbit packing (off Main X)
+          if (n % 2 === 0 && r !== c && r + c !== n - 1) {
+            const orbitHits =
+              (grid[c * n + (n - 1 - r)] === v ? 1 : 0) +
+              (grid[(n - 1 - r) * n + (n - 1 - c)] === v ? 1 : 0) +
+              (grid[(n - 1 - c) * n + r] === v ? 1 : 0);
+            if (orbitHits > 0) {
+              score += orbitHits % 2 === 1 ? 6.5 : 4.5;
+            }
+          }
+
+          // Odd-n (gcd(n, 6) = 1: n = 5, 7, 11) Toroidal Knight-Transversal packing
+          if (countToroidalKnightMatches(grid, n, r, c, v) > 0) {
+            score += 5;
+          }
+
           if (compatibleTemplates.length > 0) {
             for (let t = 0; t < compatibleTemplates.length; t++) {
               if (compatibleTemplates[t][r][c] === v) {

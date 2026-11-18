@@ -26,7 +26,7 @@
 \setlength{\parskip}{6pt plus 2pt minus 1pt}
 
 \title{\textbf{LineLimit 45 Bot Architecture:\\Combinatorial Invariants, Adversarial Search,\\Cooperative Completion, and Implicit Coordination}}
-\author{LineLimit 45 Engine Specification (v2.1.0)}
+\author{LineLimit 45 Engine Specification (v2.2.0)}
 \date{\today}
 
 \begin{document}
@@ -34,7 +34,7 @@
 \maketitle
 
 \begin{abstract}
-We document the exact mathematical invariants and search algorithms used by the artificial players (\emph{Bots}) and deterministic \emph{Best-Move Hint} engine in \textbf{LineLimit 45} (v2.1.0) across both \textbf{Adversarial} (\texttt{ADV}) and \textbf{Cooperative} (\texttt{CO-OP}) modes. Both modes share a fast $O(1)/O(n^2)$ combinatorial core built on: (1)~the \emph{Zero-Slack Lock-Floor Theorem}, (2)~the \emph{Draw $\Longleftrightarrow$ Incremental Latin Square Theorem}, (3)~pigeonhole \emph{sublevel deficit} bounds, (4)~an \emph{Exact Ceiling-Frozen Endgame Shortcut}, and (5)~the $D_4$ dihedral symmetries of canonical incremental $n \times n$ Latin squares $L^n$. In \texttt{ADV}, the Bot combines iterative-deepening alpha-beta Negamax with $[v_{\max}]\,\texttt{x1}$ trapdoor-cliff parity control, $180^\circ$ central-inversion mirror/Main-X geometry, and Boltzmann band sampling. In \texttt{CO-OP}, exact Latin-uniqueness pruning allows Minimum-Remaining-Values (MRV) backtracking to verify full-board completions from up to $30$ empty squares. Cooperative Bots \emph{never communicate}: coordination emerges purely from the visible board.
+We document the exact mathematical invariants and search algorithms used by the artificial players (\emph{Bots}) and selected-coin \emph{Best-Move Hint} engine in \textbf{LineLimit 45} (v2.2.0) across both \textbf{Adversarial} (\texttt{ADV}) and \textbf{Cooperative} (\texttt{CO-OP}) modes. Both modes share a fast $O(1)/O(n^2)$ combinatorial core built on: (1)~the \emph{Zero-Slack Lock-Floor Theorem}, (2)~the \emph{Draw $\Longleftrightarrow$ Incremental Latin Square Theorem}, (3)~the \emph{$90^\circ$ Non-Attacking Quartet Theorem} and $\gcd(n,6)=1$ \emph{toroidal knight transversals}, (4)~pigeonhole \emph{sublevel deficit} bounds, and (5)~an \emph{Exact Ceiling-Frozen Endgame Shortcut}. In \texttt{ADV}, the Bot combines iterative-deepening alpha-beta Negamax with $[v_{\max}]\,\texttt{x1}$ trapdoor-cliff parity control, dynamic $90^\circ$/$180^\circ$ orbit completion, odd-$n$ center seizure, escalating Main-X mirrors ($w \to w+1$), and Boltzmann band sampling. In \texttt{CO-OP}, exact Latin-uniqueness pruning allows Minimum-Remaining-Values (MRV) backtracking to verify full-board completions from up to $30$ empty squares. Cooperative Bots \emph{never communicate}: coordination emerges purely from the visible board.
 \end{abstract}
 
 \section{Game State, Legality, and Scoring}
@@ -86,6 +86,18 @@ By induction on $v = 1,\dots,n$. No row or column can hold two $1$s ($\mathrm{co
 If any row or column contains two equal coins (even two copies of $n$), or on $n=4$ if coin $1$ occupies any corner or center cell (absent in all $16$ incremental $4\times 4$ Latin squares), zero full-board Draws remain reachable: at least one empty cell must become dead (\texttt{KO}) before ply $n^2$.
 \end{corollary}
 
+\subsection{The $90^\circ$ Non-Attacking Quartet Theorem and Toroidal Transversals}
+
+\begin{theorem}[$90^\circ$ Quartet Independence]\label{thm:quartet}
+Let $n$ be even and let $(r,c)$ lie strictly off the Main X ($r \ne c$ and $r+c \ne n-1$). Then its $90^\circ$ rotational orbit
+\[
+  O_{90}(r,c) = \bigl\{(r,c),\; (c,n-1-r),\; (n-1-r,n-1-c),\; (n-1-c,r)\bigr\}
+\]
+consists of $4$ pairwise non-attacking queens (four distinct rows, four distinct columns, four distinct $\setminus$ diagonals, and four distinct $/$ diagonals). Conversely, on $n=4$, the center orbit and corner orbit on the Main X each form complete conflict cliques $K_4$.
+\end{theorem}
+
+For odd $n$ coprime to $6$ ($n \in \{5,7,11\}$), toroidal knight-steps $((r \pm 1)\bmod n, (c \pm 2)\bmod n)$ and $((r \pm 2)\bmod n, (c \pm 1)\bmod n)$ similarly generate $n$-cell non-attacking Latin transversals.
+
 \subsection{Dead Squares, Sublevel Deficit, and Trapdoor Cliffs}
 
 Let $v_{\mathrm{top}} = \max(\{0\} \cup \{v : \mathrm{rem}[v] > 0\})$ and $v_{\mathrm{sec}} = \max(\{0\} \cup \{v < v_{\mathrm{top}} : \mathrm{rem}[v] > 0\})$.
@@ -113,10 +125,11 @@ If $\mathrm{safeMoves} = \emptyset$, the Bot deterministically picks the legal m
 
 \begin{enumerate}[nosep]
   \item \textbf{1-Ply Win Scan}: Any safe move leaving $\mathrm{oppSafe} = 0$ is immediately flagged as a forced win ($+100{,}000$).
-  \item \textbf{Symmetry, Cliff, and Squeeze Root Ordering}: Candidates $(r,c,v)$ combine $-4\,\mathrm{oppSafe}$, line multiplicity $3|\mathcal{L}(r,c)| - 0.5\,d_{\mathrm{center}}$, tight floor-lock bonuses ($v = F(r,c)$, $v \le 2$), zero-splash high-floor cleanup ($v = n$ on $F = n$, $+5$), $[v_{\mathrm{top}}]\,\texttt{x1}$ cliff-parity verification ($+10$ if leaving opponent even playable squares, $-8$ if odd), and $D_4(L^n)$ compatibility ($+6$ while Draws remain alive). In addition:
+  \item \textbf{Symmetry, Orbit, Cliff, and Squeeze Root Ordering}: Candidates $(r,c,v)$ combine $-4\,\mathrm{oppSafe}$, line multiplicity $2.5|\mathcal{L}(r,c)| - 0.4\,d_{\mathrm{center}}$, tight floor-lock bonuses ($v = F(r,c)$, $v \le 2$), zero-splash high-floor cleanup ($v = n$ on $F = n$, $+5$), $[v_{\mathrm{top}}]\,\texttt{x1}$ cliff-parity verification ($+10$ if leaving opponent even playable squares, $-8$ if odd), $\gcd(n,6)=1$ knight-transversal continuity ($+3.5$), and $D_4(L^n)$ compatibility ($+4$). In addition:
   \begin{itemize}[nosep]
-    \item \emph{Ply $0$ Mirror-Breakers}: For odd $n$, P1 receives $+14$ for placing $1$ at the exact center $(\frac{n-1}{2},\frac{n-1}{2})$ (locking both main diagonals and breaking odd stack parity). For even $n$, P1 receives $+10$ for small locks on the Main X ($r = c$ or $r + c = n - 1$, where $180^\circ$ inversion collides on the same diagonal), plus $+6$ on $n=4$ for center $1$ (killing all $16$ Draws on Move~1).
-    \item \emph{Even-$n$ $180^\circ$ Antipodal Defense}: For P2 on even $n$, playing $(r,c,v)$ matching an occupied antipodal coin $\mathrm{grid}[n-1-r,n-1-c] = v$ while $\mathrm{rem}[v]$ is odd receives $+9$, restoring even stack parity.
+    \item \emph{Opening \& Odd-$n$ ``Steal the Center''}: On odd $n$, P1 receives $+5$ for opening at $(\frac{n-1}{2},\frac{n-1}{2})$; if P1 leaves the center open on ply $\ge 1$, P2 receives $+7.5$ to immediately seize $(\frac{n-1}{2},\frac{n-1}{2})$ with $v = F \le 3$ and flip symmetric parity. On even $n$, P1 receives $+4.5$ for small Main-X openings that preempt rotational mirroring.
+    \item \emph{Dynamic $90^\circ$ Quartet Completion}: For P2 on even $n$ off the Main X (Theorem~\ref{thm:quartet}), whenever $O_{90}(r,c)$ currently holds $1$ or $3$ copies of $v$ while $\mathrm{rem}[v]$ is odd, playing $v$ in $(r,c)$ receives $+7$ to $+8$, restoring both orbit and stack parity across up to $3$ varied non-attacking cells (with $+5.5$ off the cross/Main-X on odd $n$).
+    \item \emph{Escalating Mirror ($w \to w+1$)}: When an opponent places coin $w$ on the Main X or odd cross so a rotational partner $(r,c)$ has floor raised to $F(r,c) = w+1$, answering on $(r,c)$ with $v = w+1$ receives $+6$, locking the shared line at $z(L) = w+1$.
   \end{itemize}
   \item \textbf{Phase-Scaled Leaf Evaluation}: At depth $0$ (after checking the exact Frozen-Ceiling Tablebase), let $\mathrm{drawsDead}$ combine dead cells, sublevel deficit, and Corollary~\ref{cor:draw-death}, and let
   \[
@@ -128,7 +141,7 @@ If $\mathrm{safeMoves} = \emptyset$, the Bot deterministically picks the legal m
 
 \section{Cooperative Mode (\texttt{CO-OP}) Strategy \& Implicit Coordination}
 
-In \texttt{CO-OP}, the Bot scores every safe move by penalizing \texttt{KO} cells ($-50{,}000+$), sublevel deficits ($-40{,}000+$), and Theorem~\ref{thm:draw-latin} row/column duplicates or $4\times 4$ forbidden-$1$s ($-45{,}000$), while rewarding $\mathrm{minHeadroom} = \min_{k: R_{\le k}>0}(S_{\le k} - R_{\le k})$, $D_4(L^n)$ compatibility, and healthy exploration jitter ($\pm 13$).
+In \texttt{CO-OP}, the Bot scores every safe move by penalizing \texttt{KO} cells ($-50{,}000+$), sublevel deficits ($-40{,}000+$), and Theorem~\ref{thm:draw-latin} row/column duplicates or $4\times 4$ forbidden-$1$s ($-45{,}000$), while rewarding $\mathrm{minHeadroom} = \min_{k: R_{\le k}>0}(S_{\le k} - R_{\le k})$, off-X $90^\circ$ quartet packing ($+4.5$ to $+6.5$), $\gcd(n,6)=1$ toroidal knight-transversal packing ($+5$), $D_4(L^n)$ compatibility ($+6$), and healthy exploration jitter ($\pm 13$).
 
 When $\mathrm{emptyCount} \le 30$, shuffled healthy candidates (up to $28$) are tested via an exact \textbf{Minimum-Remaining-Values (MRV)} solver (\texttt{canCompleteCoopBoard}, $75\,\mathrm{ms}$ shared budget, $5{,}000$ nodes/candidate) that strictly prunes any row/column duplicate, \texttt{KO} cell, or sublevel deficit at every node. To maximize game-to-game variety without sacrificing theoretical solvability, the Bot samples \emph{uniformly across all MRV-verified completable moves} (or within a $22$-point healthy band when $> 30$ cells are empty).
 
@@ -149,12 +162,12 @@ Objective & Leave opponent with $0$ safe moves & Fill all $n^2$ cells safely \\
 Core Search & Iterative Alpha-Beta + Frozen Tablebase & 1-ply Health + Exact MRV DFS \\
 Theorem~\ref{thm:draw-latin} (Row/Col Dup) & Shifts max-ply parity bound ($-1$) & Strictly penalized/pruned ($-45{,}000$) \\
 $[v_{\mathrm{top}}]\,\texttt{x1}$ Cliff ($K_{\mathrm{cliff}}$) & Parity-choice bonus ($+24$) \& guard & Prevented via headroom maximization \\
-Symmetry Geometry & Main-X / Center break; $180^\circ$ P2 mirror & $D_4(L^n)$ template bonus ($+6$) \\
+Symmetry Geometry & $90^\circ$ Quartet, Steal-Center, $w\to w+1$ & $90^\circ$ Quartet + Knight + $D_4(L^n)$ \\
 Endgame Exactness & $O(n^2)$ Frozen-Ceiling + Nimber/AB & Exact MRV completion ($\le 30$ empty) \\
 Bot Communication & None (stateless) & None (stateless; shared board only) \\
 \bottomrule
 \end{tabular}
-\caption{Summary comparison of \texttt{ADV} and \texttt{CO-OP} pipelines in LineLimit 45 (v2.1.0).}
+\caption{Summary comparison of \texttt{ADV} and \texttt{CO-OP} pipelines in LineLimit 45 (v2.2.0).}
 \end{table}
 
 \end{document}

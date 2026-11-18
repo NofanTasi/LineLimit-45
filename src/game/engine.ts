@@ -345,6 +345,123 @@ export function getIncrementalLatinSymmetries(n: number): number[][][] {
   return results;
 }
 
+const coopBlueprintCache = new Map<number, number[][][]>();
+
+function isZeroViolationFullGrid(sq: number[][]): boolean {
+  const n = sq.length;
+  const topo = getTopology(n);
+  const stride = n + 1;
+  const lineFreq = new Int8Array(topo.lineCount * stride);
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const v = sq[r][c];
+      const ls = topo.cellLines[r * n + c];
+      for (let i = 0; i < ls.length; i++) {
+        lineFreq[ls[i] * stride + v]++;
+      }
+    }
+  }
+  for (let l = 0; l < topo.lineCount; l++) {
+    const base = l * stride;
+    let cum = 0;
+    for (let v = 1; v <= n; v++) {
+      const f = lineFreq[base + v];
+      cum += f;
+      if (f > 0 && cum > v) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Expanded cached catalog of verified 0-violation full-board n x n blueprints for CO-OP:
+ * - All 16 exact solutions on 4x4,
+ * - All valid toroidal shifts x D4 symmetries for n >= 5 (e.g. 40 on 5x5, 56 on 7x7,
+ *   16 on 8x8, 24 on 9x9, 88 on 11x11, and 8 on 6x6, 10x10, 12x12).
+ */
+function getCoopBlueprintPool(n: number): number[][][] {
+  const cached = coopBlueprintCache.get(n);
+  if (cached) return cached;
+
+  const seen = new Set<string>();
+  const results: number[][][] = [];
+  const addIfNew = (sq: number[][]) => {
+    const sig = sq.map((row) => row.join(',')).join(';');
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      results.push(sq);
+    }
+  };
+
+  if (n === 4) {
+    // Enumerate all 16 exact 4x4 incremental Latin squares
+    const grid = Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+    const rem = [0, 4, 4, 4, 4];
+    const solve4 = (idx: number) => {
+      if (idx === 16) {
+        if (isZeroViolationFullGrid(grid)) {
+          addIfNew(grid.map((row) => [...row]));
+        }
+        return;
+      }
+      const r = Math.floor(idx / 4);
+      const c = idx % 4;
+      for (let v = 1; v <= 4; v++) {
+        if (rem[v] <= 0) continue;
+        let dup = false;
+        for (let k = 0; k < c; k++) if (grid[r][k] === v) dup = true;
+        for (let k = 0; k < r; k++) if (grid[k][c] === v) dup = true;
+        if (dup) continue;
+        grid[r][c] = v;
+        if (inspectCellLinesNumeric(grid, 4, r, c).safe) {
+          rem[v]--;
+          solve4(idx + 1);
+          rem[v]++;
+        }
+        grid[r][c] = 0;
+      }
+    };
+    solve4(0);
+    coopBlueprintCache.set(n, results);
+    return results;
+  }
+
+  const base = getIncrementalLatinSquare(n);
+  if (!base) return [];
+
+  const transforms: ((r: number, c: number) => [number, number])[] = [
+    (r, c) => [r, c],
+    (r, c) => [c, n - 1 - r],
+    (r, c) => [n - 1 - r, n - 1 - c],
+    (r, c) => [n - 1 - c, r],
+    (r, c) => [r, n - 1 - c],
+    (r, c) => [n - 1 - r, c],
+    (r, c) => [c, r],
+    (r, c) => [n - 1 - c, n - 1 - r],
+  ];
+
+  for (let sr = 0; sr < n; sr++) {
+    for (let sc = 0; sc < n; sc++) {
+      const shifted = Array.from({ length: n }, (_, r) =>
+        Array.from({ length: n }, (_, c) => base[(r + sr) % n][(c + sc) % n]),
+      );
+      if (!isZeroViolationFullGrid(shifted)) continue;
+      for (const tf of transforms) {
+        const sq = Array.from({ length: n }, (_, r) =>
+          Array.from({ length: n }, (_, c) => {
+            const [rr, cc] = tf(r, c);
+            return shifted[rr][cc];
+          }),
+        );
+        addIfNew(sq);
+      }
+    }
+  }
+
+  coopBlueprintCache.set(n, results);
+  return results;
+}
+
 export function evaluateBoard(board: BoardState): BoardEvaluation {
   const n = board.length;
   const lines = getAllLines(n);
@@ -1941,8 +2058,96 @@ export function analyzePosition(board: BoardState, nodeBudget = 24000): Position
 interface CoopHealth {
   deadCells: number;
   maxDeficit: number;
+  lineDeficits: number;
   minHeadroom: number;
   totalSafe: number;
+}
+
+/**
+ * Exact O(n^2) necessary condition by Theorem 1 (every full completion is a Latin square):
+ * 1) Every value `v` missing from row `r` (resp. col `c`) must have >= 1 empty cell in row `r`
+ *    (resp. col `c`) with `floor <= v` and `v` not yet placed in the crossing col (resp. row).
+ * 2) For each threshold `k = 1..n`, the count of values `<= k` still missing from row `r`
+ *    (resp. col `c`) cannot exceed the count of empty cells in row `r` (resp. col `c`) with `floor <= k`.
+ */
+function countRowColLatinDeficits(ctx: FastEngineContext, cellFloors: Uint8Array): number {
+  const { n, grid, lineFreq, stride } = ctx;
+  let deficits = 0;
+  const buckets = new Int16Array(n + 2);
+
+  // Per-row check
+  for (let r = 0; r < n; r++) {
+    let empties = 0;
+    buckets.fill(0);
+    for (let c = 0; c < n; c++) {
+      const idx = r * n + c;
+      if (grid[idx] === 0) {
+        empties++;
+        buckets[cellFloors[idx]]++;
+      }
+    }
+    if (empties === 0) continue;
+
+    const rowBase = r * stride;
+    let slotsLeq = 0;
+    let missingLeq = 0;
+    for (let v = 1; v <= n; v++) {
+      slotsLeq += buckets[v];
+      if (lineFreq[rowBase + v] === 0) {
+        missingLeq++;
+        let canPlace = false;
+        for (let c = 0; c < n; c++) {
+          const idx = r * n + c;
+          if (grid[idx] === 0 && cellFloors[idx] <= v && lineFreq[(n + c) * stride + v] === 0) {
+            canPlace = true;
+            break;
+          }
+        }
+        if (!canPlace) deficits++;
+      }
+      if (missingLeq > slotsLeq) {
+        deficits += missingLeq - slotsLeq;
+      }
+    }
+  }
+
+  // Per-column check
+  for (let c = 0; c < n; c++) {
+    let empties = 0;
+    buckets.fill(0);
+    for (let r = 0; r < n; r++) {
+      const idx = r * n + c;
+      if (grid[idx] === 0) {
+        empties++;
+        buckets[cellFloors[idx]]++;
+      }
+    }
+    if (empties === 0) continue;
+
+    const colBase = (n + c) * stride;
+    let slotsLeq = 0;
+    let missingLeq = 0;
+    for (let v = 1; v <= n; v++) {
+      slotsLeq += buckets[v];
+      if (lineFreq[colBase + v] === 0) {
+        missingLeq++;
+        let canPlace = false;
+        for (let r = 0; r < n; r++) {
+          const idx = r * n + c;
+          if (grid[idx] === 0 && cellFloors[idx] <= v && lineFreq[r * stride + v] === 0) {
+            canPlace = true;
+            break;
+          }
+        }
+        if (!canPlace) deficits++;
+      }
+      if (missingLeq > slotsLeq) {
+        deficits += missingLeq - slotsLeq;
+      }
+    }
+  }
+
+  return deficits;
 }
 
 function evaluateCoopHealth(ctx: FastEngineContext): CoopHealth {
@@ -1957,10 +2162,12 @@ function evaluateCoopHealth(ctx: FastEngineContext): CoopHealth {
   }
 
   const floorBuckets = new Int16Array(n + 2);
+  const cellFloors = new Uint8Array(n * n);
   let deadCells = 0;
   for (let idx = 0; idx < n * n; idx++) {
     if (grid[idx] !== 0) continue;
     const f = getCellMinCoin(ctx, idx);
+    cellFloors[idx] = f;
     floorBuckets[f]++;
     if (f > maxRem) deadCells++;
   }
@@ -1978,9 +2185,12 @@ function evaluateCoopHealth(ctx: FastEngineContext): CoopHealth {
     }
   }
 
+  const lineDeficits = deadCells === 0 ? countRowColLatinDeficits(ctx, cellFloors) : deadCells;
+
   return {
     deadCells,
     maxDeficit,
+    lineDeficits,
     minHeadroom: minHeadroom === Infinity ? 0 : minHeadroom,
     totalSafe: countTotalSafeMovesFast(ctx),
   };
@@ -1997,6 +2207,7 @@ function canCompleteCoopBoard(
 
   let nodes = 0;
   let budgetExhausted = false;
+  const cellFloors = new Uint8Array(ctx.n * ctx.n);
 
   function dfs(): boolean {
     if (ctx.emptyCount === 0) return true;
@@ -2031,6 +2242,7 @@ function canCompleteCoopBoard(
     for (let idx = 0; idx < n * n; idx++) {
       if (grid[idx] !== 0) continue;
       const floor = getCellMinCoin(ctx, idx);
+      cellFloors[idx] = floor;
       floorBuckets[floor]++;
       if (floor > maxRem) return false; // Dead cell => impossible to fill
 
@@ -2062,9 +2274,10 @@ function canCompleteCoopBoard(
     let slotsLeq = 0;
     for (let k = 1; k <= n; k++) {
       slotsLeq += floorBuckets[k];
-      if (remLeq[k] > slotsLeq) return false; // Sublevel deficit => impossible
+      if (remLeq[k] > slotsLeq) return false; // Global sublevel deficit => impossible
     }
 
+    if (countRowColLatinDeficits(ctx, cellFloors) > 0) return false; // Row/Col Hall deficit => impossible
     if (mrvIdx === -1) return false;
 
     const r = Math.floor(mrvIdx / n);
@@ -2114,9 +2327,9 @@ function chooseCoopBotMove(
   const { n, grid, remaining, stride } = ctx;
   const start = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const prevFloors = [0, 0, 0, 0];
-  const latinTemplates = getIncrementalLatinSymmetries(n);
+  const blueprintPool = getCoopBlueprintPool(n);
 
-  const compatibleTemplates = latinTemplates.filter((tpl) => {
+  const compatibleTemplates = blueprintPool.filter((tpl) => {
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
         const g = grid[r * n + c];
@@ -2125,6 +2338,15 @@ function chooseCoopBotMove(
     }
     return true;
   });
+
+  // Pick a single random compatible blueprint per turn when varying play so two stateless
+  // Bots converge implicitly via the visible board while randomizing move order across n^2! sequences
+  const activeBlueprints =
+    compatibleTemplates.length > 0
+      ? varyPlay
+        ? [compatibleTemplates[Math.floor(Math.random() * compatibleTemplates.length)]]
+        : compatibleTemplates
+      : [];
 
   interface CoopCandidate {
     idx: number;
@@ -2165,6 +2387,7 @@ function chooseCoopBotMove(
           (emptiesAfter > 0 && health.totalSafe === 0) ||
           health.deadCells > 0 ||
           health.maxDeficit > 0 ||
+          health.lineDeficits > 0 ||
           rowDup ||
           colDup ||
           forbidden4x4One;
@@ -2179,6 +2402,7 @@ function chooseCoopBotMove(
         } else {
           if (health.deadCells > 0) score -= 50_000 + health.deadCells * 4000;
           if (health.maxDeficit > 0) score -= 40_000 + health.maxDeficit * 3500;
+          if (health.lineDeficits > 0) score -= 38_000 + health.lineDeficits * 2500;
 
           // Theorem 1: Any row/col duplicate or 4x4 forbidden-1 permanently prevents completion
           if (rowDup || colDup || forbidden4x4One) {
@@ -2208,10 +2432,13 @@ function chooseCoopBotMove(
             score += 5;
           }
 
-          if (compatibleTemplates.length > 0) {
-            for (let t = 0; t < compatibleTemplates.length; t++) {
-              if (compatibleTemplates[t][r][c] === v) {
-                score += 6;
+          if (activeBlueprints.length > 0) {
+            for (let t = 0; t < activeBlueprints.length; t++) {
+              if (activeBlueprints[t][r][c] === v) {
+                // Beyond MRV horizon (> 30 empty cells), anchor strongly to any consistent
+                // full-board blueprint while randomizing which cell/coin is played next;
+                // within <= 30 empty cells, MRV exact verification (+500,000) takes over!
+                score += ctx.emptyCount > 30 ? 2500 : 12;
                 break;
               }
             }
